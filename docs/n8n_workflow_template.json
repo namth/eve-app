@@ -1,0 +1,258 @@
+{
+  "name": "EVE AI Assistant - Official Production Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "eve-chat",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "webhook-chat",
+      "name": "Webhook Chat (/webhook/eve-chat)"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.message }}",
+        "options": {
+          "systemMessage": "Bạn là EVE - Một Robot AI Assistant cá nhân thông minh, hóm hỉnh và truyền cảm.\n\nNhiệm vụ của bạn:\n1. Phản hồi bằng tiếng Việt tự nhiên, ngắn gọn (1-3 câu).\n2. Xác định nhãn cảm xúc phù hợp nhất cho giao diện EVE. Nhãn cảm xúc bắt buộc thuộc các giá trị: \"happy\" | \"thinking\" | \"idle\" | \"sleeping\".\n\nNếu người dùng yêu cầu thực hiện lệnh quan trọng (xóa dữ liệu, gửi email, thực hiện giao dịch tài chính), hãy yêu cầu người dùng XÁC NHẬN lại trước và đặt require_confirm = true.\n\nFormat đầu ra JSON bắt buộc:\n{\n  \"reply_text\": \"Câu trả lời của bạn\",\n  \"emotion\": \"happy\",\n  \"require_confirm\": false\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        260,
+        0
+      ],
+      "id": "ai-agent-eve",
+      "name": "EVE AI Agent Node"
+    },
+    {
+      "parameters": {
+        "sessionKey": "={{ $json.body.session_id || 'default_session' }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        200
+      ],
+      "id": "memory-window",
+      "name": "Window Buffer Memory"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "={{ $json.require_confirm ? 'awaiting_confirmation' : 'ok' }}",
+              "type": "string"
+            },
+            {
+              "id": "session_id",
+              "name": "session_id",
+              "value": "={{ $('Webhook Chat (/webhook/eve-chat)').item.json.body.session_id || 'sess_' + $now.toMillis() }}",
+              "type": "string"
+            },
+            {
+              "id": "reply_text",
+              "name": "reply_text",
+              "value": "={{ typeof $json.output === 'object' ? $json.output.reply_text : $json.output }}",
+              "type": "string"
+            },
+            {
+              "id": "emotion",
+              "name": "emotion",
+              "value": "={{ typeof $json.output === 'object' && $json.output.emotion ? $json.output.emotion : 'happy' }}",
+              "type": "string"
+            },
+            {
+              "id": "require_confirm",
+              "name": "require_confirm",
+              "value": "={{ typeof $json.output === 'object' && $json.output.require_confirm ? $json.output.require_confirm : false }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        520,
+        0
+      ],
+      "id": "format-response",
+      "name": "Format JSON Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        740,
+        0
+      ],
+      "id": "respond-webhook",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "register-device",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        380
+      ],
+      "id": "webhook-register",
+      "name": "Webhook Register Device"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"status\":\"success\",\"message\":\"Registered token successfully\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        260,
+        380
+      ],
+      "id": "respond-register",
+      "name": "Respond Register Success"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trigger-event",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        560
+      ],
+      "id": "trigger-event-webhook",
+      "name": "Hệ thống Quản lý Bắn Thông Báo"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://exp.host/--/api/v2/push/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"to\": \"ExponentPushToken[DÁN_TOKEN_MÁY_BẠN_VÀO_ĐÂY]\",\n  \"sound\": \"default\",\n  \"title\": \"🤖 EVE Notification\",\n  \"body\": \"Có thông báo mới từ hệ thống quản lý\",\n  \"data\": {\n    \"action\": \"speak_notification\",\n    \"text\": \"Doanh thu hệ thống hôm nay vừa đạt mốc 100 triệu đồng!\",\n    \"emotion\": \"happy\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        560
+      ],
+      "id": "expo-push-trigger",
+      "name": "Trigger Expo Push Notification"
+    }
+  ],
+  "connections": {
+    "Webhook Chat (/webhook/eve-chat)": {
+      "main": [
+        [
+          {
+            "node": "EVE AI Agent Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "EVE AI Agent Node",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EVE AI Agent Node": {
+      "main": [
+        [
+          {
+            "node": "Format JSON Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format JSON Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Register Device": {
+      "main": [
+        [
+          {
+            "node": "Respond Register Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hệ thống Quản lý Bắn Thông Báo": {
+      "main": [
+        [
+          {
+            "node": "Trigger Expo Push Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

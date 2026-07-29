@@ -1,0 +1,42 @@
+{
+  "cli": {
+    "version": ">= 21.3.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_N8N_WEBHOOK_URL": "https://ai.oa.io.vn/webhook/eve-chat",
+        "EXPO_PUBLIC_N8N_REGISTER_URL": "https://ai.oa.io.vn/webhook/register-device",
+        "EXPO_PUBLIC_USER_ID": "user_default_01",
+        "EXPO_PUBLIC_GROQ_API_KEY": "YOUR_GROQ_API_KEY_HERE",
+        "EXPO_PUBLIC_IDLE_SLEEP_TIMEOUT": "90000"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_N8N_WEBHOOK_URL": "https://ai.oa.io.vn/webhook/eve-chat",
+        "EXPO_PUBLIC_N8N_REGISTER_URL": "https://ai.oa.io.vn/webhook/register-device",
+        "EXPO_PUBLIC_USER_ID": "user_default_01",
+        "EXPO_PUBLIC_GROQ_API_KEY": "YOUR_GROQ_API_KEY_HERE",
+        "EXPO_PUBLIC_IDLE_SLEEP_TIMEOUT": "90000"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_N8N_WEBHOOK_URL": "https://ai.oa.io.vn/webhook/eve-chat",
+        "EXPO_PUBLIC_N8N_REGISTER_URL": "https://ai.oa.io.vn/webhook/register-device",
+        "EXPO_PUBLIC_USER_ID": "user_default_01",
+        "EXPO_PUBLIC_GROQ_API_KEY": "YOUR_GROQ_API_KEY_HERE",
+        "EXPO_PUBLIC_IDLE_SLEEP_TIMEOUT": "90000"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

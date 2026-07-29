@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "265588111559",
+    "project_id": "eve-agent-7c30d",
+    "storage_bucket": "eve-agent-7c30d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:265588111559:android:4b1720f4093660e22366e2",
+        "android_client_info": {
+          "package_name": "com.eve.voiceai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDPRN1VOvckBSqHwC_BewakDjWATXfx7Pg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

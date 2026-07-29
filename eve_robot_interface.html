@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVE AI Assistant Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: radial-gradient(circle at center, #112240 0%, #030712 100%);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Hiệu ứng bay lơ lửng đồng bộ của EVE giống trong ảnh 8025a9f63435b64305b1cf045c76fd70.jpg */
+        @keyframes hover {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-12px); }
+            100% { transform: translateY(0px); }
+        }
+
+        @keyframes floorGlow {
+            0% { transform: translateX(-50%) scale(1); opacity: 0.75; }
+            50% { transform: translateX(-50%) scale(0.85); opacity: 0.55; }
+            100% { transform: translateX(-50%) scale(1); opacity: 0.75; }
+        }
+
+        .eve-character {
+            animation: hover 4s ease-in-out infinite;
+        }
+
+        #eve-avatar {
+            transition: filter 2s ease-in-out;
+        }
+
+        /* Hiệu ứng hào quang Ánh Bạc Tinh Khôi ôm sát thân EVE cân bằng hoàn hảo giữa đầu và thân */
+        @keyframes sleepAuraPulse {
+            0%, 100% {
+                filter: 
+                    drop-shadow(0 0 0px rgba(255, 255, 255, 0)) 
+                    drop-shadow(0 0 0px rgba(203, 213, 225, 0));
+            }
+            50% {
+                filter: 
+                    drop-shadow(0 0 20px rgba(255, 255, 255, 0.95)) 
+                    drop-shadow(0 0 1px rgba(203, 213, 225, 0.65));
+            }
+        }
+
+        /* Hiệu ứng toàn bộ Visor rực sáng đều toàn diện khi ngủ */
+        .visor-sleep-glow {
+            background: rgba(255, 255, 255, 0.75);
+            box-shadow: 
+                0 0 25px rgba(255, 255, 255, 0.9),
+                inset 0 0 15px rgba(255, 255, 255, 0.9);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        @keyframes visorGlowPulse {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 0.35; }
+        }
+
+        .aura-pulse {
+            animation: sleepAuraPulse 3s ease-in-out infinite;
+        }
+
+        .aura-pulse .visor-sleep-glow {
+            animation: visorGlowPulse 3s ease-in-out infinite;
+        }
+
+        /* Đầu hình quả trứng siêu bóng bẩy */
+        .eve-head {
+            background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 45%, #cbd5e1 100%);
+            box-shadow: 
+                inset 10px 10px 20px rgba(255, 255, 255, 0.9),
+                inset -10px -10px 25px rgba(100, 116, 139, 0.25),
+                0 15px 35px rgba(0, 0, 0, 0.35);
+            position: relative;
+            border-radius: 50% 50% 50% 50% / 66% 66% 40% 40%;
+        }
+
+        /* Visor màu tối thẳm sâu thẳm */
+        .eve-visor {
+            background: radial-gradient(circle at 50% 30%, #001c3d 0%, #020617 100%);
+            box-shadow: 
+                inset 0 10px 20px rgba(0, 0, 0, 0.95),
+                inset 0 -5px 15px rgba(255, 255, 255, 0.05),
+                0 0 0 2px rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+            transition: margin-top 0.3s ease-in-out;
+        }
+
+        /* Chi tiết bóng phản chiếu trên Visor */
+        .visor-reflection {
+            position: absolute;
+            top: 2px;
+            left: 15%;
+            width: 70%;
+            height: 30%;
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 100%);
+            border-radius: 0 0 100px 100px / 0 0 35px 35px;
+            pointer-events: none;
+        }
+
+        /* Thân hình giọt nước nhẵn nhụi của EVE */
+        .eve-body {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 40%, #94a3b8 100%);
+            box-shadow: 
+                inset 15px 15px 30px rgba(255, 255, 255, 0.95),
+                inset -15px -15px 35px rgba(100, 116, 139, 0.25),
+                0 25px 45px rgba(0, 0, 0, 0.4);
+            border-radius: 80px 80px 100px 100px / 25px 25px 230px 230px;
+        }
+
+        /* Cánh tay lơ lửng không khớp nối */
+        .eve-arm {
+            background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 50%, #94a3b8 100%);
+            box-shadow: 
+                inset 6px 6px 12px rgba(255, 255, 255, 0.9),
+                inset -6px -6px 12px rgba(100, 116, 139, 0.2),
+                0 15px 25px rgba(0, 0, 0, 0.3);
+            border-radius: 50% 50% 50% 50% / 40% 40% 60% 60%;
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 1.5s ease-in-out;
+            z-index: 20;
+        }
+
+        #left-eye-path, #right-eye-path {
+            transition: opacity 1.5s ease-in-out;
+        }
+
+        /* Hiệu ứng giật mình khi thức dậy */
+        @keyframes startle {
+            0% { transform: translateY(0px) scale(1); }
+            20% { transform: translateY(-16px) scale(1.04); }
+            45% { transform: translateY(3px) scale(0.98); }
+            70% { transform: translateY(-3px) scale(1.01); }
+            100% { transform: translateY(0px) scale(1); }
+        }
+
+        /* Hiệu ứng xoa cằm nhẹ nhàng khi suy nghĩ/vui vẻ */
+        @keyframes rubChin {
+            0% { transform: rotate(-122deg) translateY(-41px) translateX(-25px); }
+            50% { transform: rotate(-118deg) translateY(-32px) translateX(-25px); }
+            100% { transform: rotate(-122deg) translateY(-41px) translateX(-25px); }
+        }
+        .rub-chin-anim {
+            animation: rubChin 2s ease-in-out infinite !important;
+        }
+        .slow-transition {
+            transition: transform 1.0s ease-in-out !important;
+        }
+
+        /* Bong bóng suy nghĩ và hiệu ứng nổi */
+        .show-bubble {
+            opacity: 1 !important;
+            transform: scale(1) !important;
+            pointer-events: auto !important;
+        }
+        @keyframes bubbleFloat {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+        }
+        .bubble-inner {
+            animation: bubbleFloat 2s ease-in-out infinite;
+        }
+
+        /* Hiệu ứng rung đầu khi cười khúc khích */
+        @keyframes giggle {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            20% { transform: translateY(-6px) rotate(-3deg); }
+            40% { transform: translateY(2px) rotate(2deg); }
+            60% { transform: translateY(-5px) rotate(-2deg); }
+            80% { transform: translateY(1px) rotate(1deg); }
+        }
+        .giggle-anim {
+            animation: giggle 0.38s ease-in-out infinite !important;
+        }
+
+        /* Sóng âm LED quét ngang chân thực */
+        .scanline-mask {
+            background-size: 100% 4px;
+            background-image: linear-gradient(
+                to bottom,
+                rgba(0, 0, 0, 0.3) 50%,
+                transparent 50%
+            );
+        }
+
+        /* Cường hóa ánh sáng Neon cực mạnh cho mắt EVE */
+        .neon-eye-glow {
+            filter: 
+                drop-shadow(0 0 8px rgba(0, 240, 255, 0.9)) 
+                drop-shadow(0 0 20px rgba(0, 180, 255, 0.6))
+                drop-shadow(0 0 45px rgba(0, 100, 255, 0.4));
+        }
+
+        /* Bóng phản chiếu ánh sáng trắng dưới sàn */
+        .floor-light {
+            background: radial-gradient(ellipse, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0) 70%);
+            filter: blur(5px);
+            animation: floorGlow 4s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4 overflow-hidden relative">
+
+
+
+    <!-- Sân khấu chính hiển thị mô hình EVE -->
+    <div class="flex flex-col items-center justify-center relative w-full max-w-[600px] aspect-square">
+        
+        <!-- Mô hình Robot EVE (Đầu, thân, cánh tay phối hợp) -->
+        <div class="eve-character flex flex-col items-center relative z-10 w-full">
+            
+            <!-- Khối cơ thể & đầu của EVE (Nhận hiệu ứng hào quang phát sáng khi ngủ) -->
+            <div id="eve-avatar" class="flex flex-col items-center relative">
+                <!-- Đầu của EVE -->
+                <div id="eve-head" class="eve-head w-[215px] h-[181px] flex items-center justify-center mb-1 relative">
+                    <!-- Visor tối màu -->
+                    <div id="eve-visor" class="eve-visor w-[172px] h-[120px] rounded-[50%_50%_50%_50%_/_66%_66%_42%_42%] mt-3 relative flex items-center justify-center">
+                        <div class="visor-reflection"></div>
+                        <!-- Lớp hào quang radial tỏa sáng rực rỡ bên trong Visor khi ngủ -->
+                        <div class="visor-sleep-glow absolute inset-0 rounded-[50%_50%_50%_50%_/_66%_66%_42%_42%]"></div>
+                        
+                        <!-- SVG render đôi mắt sắc nét và chớp tắt mượt mà -->
+                        <svg id="eye-svg" class="neon-eye-glow w-full h-full absolute inset-0 z-10" viewBox="0 0 184 116">
+                            <defs>
+                                <pattern id="led-pattern" width="100" height="4" patternUnits="userSpaceOnUse">
+                                    <rect width="100" height="2" fill="#000" opacity="0.35"/>
+                                </pattern>
+                            </defs>
+                            <!-- Mắt trái -->
+                            <path id="left-eye-path" fill="#00f0ff" class="scanline-mask" />
+                            <!-- Mắt phải -->
+                            <path id="right-eye-path" fill="#00f0ff" class="scanline-mask" />
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Khối cơ thể & cánh tay -->
+                <div class="relative w-[340px] h-[260px] flex justify-center">
+                    <!-- Cánh tay trái -->
+                    <div id="left-arm" class="eve-arm w-[38px] h-[190px] absolute left-[32px] top-[20px] origin-top -rotate-[10deg]"></div>
+                    
+                    <!-- Thân mình của EVE -->
+                    <div class="eve-body w-[200px] h-[260px]"></div>
+                    
+                    <!-- Cánh tay phải -->
+                    <div id="right-arm" class="eve-arm w-[38px] h-[190px] absolute right-[32px] top-[20px] origin-top rotate-[10deg]"></div>
+                </div>
+            </div>
+
+            <!-- Khung định vị lớp phủ bên ngoài cho bong bóng câu hỏi (Không bị ảnh hưởng bởi hào quang) -->
+            <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[215px] h-[181px] pointer-events-none z-30">
+                <!-- Bong bóng câu hỏi dạng đám mây (Thinking Cloud Bubble) -->
+                <div id="thinking-bubble" class="absolute -top-[130px] -right-12 opacity-0 scale-0 pointer-events-none transition-all duration-300 ease-out z-30">
+                    <div class="bubble-inner relative flex items-center justify-center w-[150px] h-[100px]">
+                        <!-- SVG Cloud hình đám mây trắng cân đối hoàn toàn cong mềm mại -->
+                        <svg viewBox="0 0 100 80" class="w-full h-full overflow-visible filter drop-shadow-[0_6px_16px_rgba(0,0,0,0.3)]">
+                            <path d="M 18,48 a 15,15 0 0,1 15,-15 a 22,22 0 0,1 38,-4 a 18,18 0 0,1 15,19 a 14,14 0 0,1 -6,22 a 18,18 0 0,1 -22,6 a 20,20 0 0,1 -30,-6 a 12,12 0 0,1 -10,-22 z" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+                        </svg>
+                        <!-- Dấu hỏi chấm hoặc chữ nội dung bong bóng -->
+                        <span id="bubble-text" class="absolute text-slate-800 text-5xl font-black" style="left: 50%; top: 60%; transform: translate(-50%, -50%);">?</span>
+                        
+                        <!-- Đường nối gồm 2 hình elip trắng sát nhau nhưng không chạm mây và đầu -->
+                        <div class="absolute bg-white border border-slate-200 rounded-full shadow-sm" style="width: 16px; height: 11px; bottom: -18px; left: 44px;"></div>
+                        <div class="absolute bg-white border border-slate-200 rounded-full shadow-sm" style="width: 9px; height: 6px; bottom: -28px; left: 30px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vết sáng chiếu hắt phản xạ dưới sàn (Floor Spotlight) -->
+        <div class="floor-light w-[140px] h-[24px] absolute bottom-10 left-1/2 -translate-x-1/2 z-0"></div>
+    </div>
+
+    <!-- Bảng điều khiển biểu cảm tinh gọn dạng biểu tượng bên phải màn hình -->
+    <div class="fixed right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-30 bg-slate-900/40 border border-slate-800/80 backdrop-blur-md p-3 rounded-2xl shadow-xl">
+        
+        <!-- Nút Trạng thái Chờ (Idle) -->
+        <button onclick="setExpression('idle')" id="btn-idle" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Chế độ chờ">
+            <i class="fa-solid fa-robot text-base"></i>
+        </button>
+
+        <!-- Nút Trạng thái Vui vẻ (Happy) -->
+        <button onclick="setExpression('happy')" id="btn-happy" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Vui vẻ">
+            <i class="fa-solid fa-face-laugh-beam text-base"></i>
+        </button>
+
+        <!-- Nút Trạng thái Suy nghĩ (Thinking) -->
+        <button onclick="setExpression('thinking')" id="btn-thinking" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Suy nghĩ">
+            <i class="fa-solid fa-brain text-base"></i>
+        </button>
+
+        <!-- Nút Trạng thái Ngủ (Sleeping) -->
+        <button onclick="setExpression('sleeping')" id="btn-sleeping" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Ngủ (Sleep)">
+            <i class="fa-solid fa-moon text-base"></i>
+        </button>
+
+        <!-- Nút Thức dậy (Wake up) -->
+        <button onclick="setExpression('wakeup')" id="btn-wakeup" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Thức dậy (Wake up)">
+            <i class="fa-solid fa-sun text-base animate-spin" style="animation-duration: 8s;"></i>
+        </button>
+
+        <!-- Nút Giả lập Nói nói (Speech Test) -->
+        <button onclick="simulateSpeech()" id="btn-speech" class="w-10 h-10 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 flex items-center justify-center transition-all duration-200 shadow-md border border-sky-500/30" title="Giả lập giọng nói">
+            <i class="fa-solid fa-comment-dots text-base animate-pulse"></i>
+        </button>
+        <hr class="border-slate-800 my-1">
+
+        <!-- Slider tinh chỉnh âm lượng dọc thu gọn -->
+        <div class="flex flex-col items-center py-2 h-28 justify-between">
+            <i class="fa-solid fa-volume-high text-[10px] text-slate-500"></i>
+            <input type="range" id="volume-slider" min="1" max="100" value="50" orient="vertical" class="h-16 w-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400" style="-webkit-appearance: slider-vertical; writing-mode: bt-lr;">
+            <i class="fa-solid fa-volume-low text-[10px] text-slate-500"></i>
+        </div>
+    </div>
+
+    <!-- Status Badge (Màn hình trạng thái góc dưới) -->
+    <div class="fixed bottom-4 left-4 z-20">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 text-[10px] tracking-wider">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+            <span class="text-slate-400 font-mono">EVE: </span>
+            <span id="system-status" class="text-emerald-400 font-bold font-mono">WAITING_COMMAND</span>
+        </div>
+    </div>
+
+    <audio id="audio-player" crossorigin="anonymous" class="hidden"></audio>
+
+    <script>
+        const audio = document.getElementById('audio-player');
+        const systemStatus = document.getElementById('system-status');
+        const volumeSlider = document.getElementById('volume-slider');
+        const leftArm = document.getElementById('left-arm');
+        const rightArm = document.getElementById('right-arm');
+        const eveVisor = document.getElementById('eve-visor');
+        const eveHead = document.getElementById('eve-head');
+        const leftEyePath = document.getElementById('left-eye-path');
+        const rightEyePath = document.getElementById('right-eye-path');
+        
+        let audioCtx;
+        let analyser;
+        let source;
+        let dataArray;
+        let currentExpression = 'idle';
+        let isActivated = false;
+        let isSpeakingSimulated = false;
+        let blinkTimeout;
+        let expressionCycleTimeout;
+        let inactivityTimeout;
+        let pendingExpression = null;
+        let isWakingUp = false;
+        const INACTIVITY_LIMIT = 300000; // 300 giây (5 phút)
+
+        const leftCenter = { x: 55, y: 58 };
+        const rightCenter = { x: 129, y: 58 };
+        const baseRadius = { rx: 24, ry: 16 };
+
+        function rotatePoint(x, y, cx, cy, degrees) {
+            const radians = (degrees * Math.PI) / 180;
+            const cos = Math.cos(radians);
+            const sin = Math.sin(radians);
+            const dx = x - cx;
+            const dy = y - cy;
+            return {
+                x: cx + dx * cos - dy * sin,
+                y: cy + dx * sin + dy * cos
+            };
+        }
+
+        function getEyePath(side, state, param = 0) {
+            const center = side === 'left' ? leftCenter : rightCenter;
+            const rx = baseRadius.rx;
+            const ry = baseRadius.ry;
+            const rot = side === 'left' ? 12 : -12;
+
+            if (state === 'happy') {
+                const happyRx = rx + 3;
+                const topY = center.y - 30;
+                const innerY = center.y - 6;
+
+                const pLeft = rotatePoint(center.x - happyRx, center.y, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + happyRx, center.y, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, rot);
+                const pBottom = rotatePoint(center.x, innerY, center.x, center.y, rot);
+
+                return `M ${pLeft.x} ${pLeft.y} 
+                        Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} 
+                        Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            } 
+            else if (state === 'smile') {
+                const pLeft = rotatePoint(center.x - rx - 1, center.y, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + rx + 1, center.y, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, center.y - 20, center.x, center.y, rot);
+                const pBottom = rotatePoint(center.x, center.y - 4, center.x, center.y, rot);
+                return `M ${pLeft.x} ${pLeft.y} Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            }
+            else if (state === 'sad') {
+                const sadRx = rx + 3;
+                const innerX = side === 'left' ? center.x + sadRx : center.x - sadRx;
+                const outerX = side === 'left' ? center.x - sadRx : center.x + sadRx;
+                
+                const pInnerTop = rotatePoint(innerX, center.y - 14, center.x, center.y, rot);
+                const pOuterTop = rotatePoint(outerX, center.y + 8, center.x, center.y, rot);
+                const pOuterBottom = rotatePoint(outerX, center.y + 18, center.x, center.y, rot);
+                const pInnerBottom = rotatePoint(innerX, center.y + 10, center.x, center.y, rot);
+                const pMidTop = rotatePoint(center.x, center.y - 8, center.x, center.y, rot);
+
+                return `M ${pInnerTop.x} ${pInnerTop.y} 
+                        Q ${pMidTop.x} ${pMidTop.y} ${pOuterTop.x} ${pOuterTop.y} 
+                        Q ${outerX} ${center.y + 16} ${pOuterBottom.x} ${pOuterBottom.y} 
+                        Q ${center.x} ${center.y + 18} ${pInnerBottom.x} ${pInnerBottom.y} Z`;
+            } 
+            else if (state === 'thinking') {
+                const slantRot = side === 'left' ? 22 : -22;
+                const thinkRy = 9;
+                return getEllipsePath(center.x, center.y, rx, thinkRy, slantRot);
+            } 
+            else if (state === 'sleeping') {
+                const sleepRx = rx + 2;
+                const topY = center.y + 6;
+                const bottomY = center.y + 16;
+                
+                const pLeft = rotatePoint(center.x - sleepRx, center.y + 2, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + sleepRx, center.y + 2, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, rot);
+                const pBottom = rotatePoint(center.x, bottomY, center.x, center.y, rot);
+
+                return `M ${pLeft.x} ${pLeft.y} 
+                        Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} 
+                        Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            }
+            else if (state === 'wakeup') {
+                return getEllipsePath(center.x, center.y, rx + 3, ry + 5, rot);
+            }
+            else if (state === 'blink-half') {
+                return getEllipsePath(center.x, center.y, rx, 4, rot);
+            } 
+            else if (state === 'blink-closed') {
+                const sleepRx = rx + 1;
+                const topY = center.y + 4;
+                const bottomY = center.y + 10;
+                
+                const pLeft = rotatePoint(center.x - sleepRx, center.y + 2, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + sleepRx, center.y + 2, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, rot);
+                const pBottom = rotatePoint(center.x, bottomY, center.x, center.y, rot);
+
+                return `M ${pLeft.x} ${pLeft.y} 
+                        Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} 
+                        Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            } 
+            else if (state === 'speaking') {
+                const voiceRy = Math.max(5, ry + param);
+                return getEllipsePath(center.x, center.y, rx, voiceRy, rot);
+            } 
+            else {
+                return getEllipsePath(center.x, center.y, rx, ry, rot);
+            }
+        }
+
+        function getEllipsePath(cx, cy, rx, ry, degrees) {
+            const radians = (degrees * Math.PI) / 180;
+            const cos = Math.cos(radians);
+            const sin = Math.sin(radians);
+            const x1 = cx + rx * cos;
+            const y1 = cy + rx * sin;
+            const x2 = cx - rx * cos;
+            const y2 = cy - rx * sin;
+            return `M ${x1} ${y1} A ${rx} ${ry} ${degrees} 0 0 ${x2} ${y2} A ${rx} ${ry} ${degrees} 0 0 ${x1} ${y1} Z`;
+        }
+
+        function updateEyes(speechVal = 0) {
+            leftEyePath.setAttribute('d', getEyePath('left', currentExpression, speechVal));
+            rightEyePath.setAttribute('d', getEyePath('right', currentExpression, speechVal));
+
+            if (['happy', 'sleeping', 'blink-closed'].includes(currentExpression)) {
+                const strokeAttrs = { 'stroke': '#00f0ff', 'stroke-width': '6', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
+                Object.keys(strokeAttrs).forEach(key => {
+                    leftEyePath.setAttribute(key, strokeAttrs[key]);
+                    rightEyePath.setAttribute(key, strokeAttrs[key]);
+                });
+            } else {
+                ['stroke', 'stroke-width', 'stroke-linejoin', 'stroke-linecap'].forEach(attr => {
+                    leftEyePath.removeAttribute(attr);
+                    rightEyePath.removeAttribute(attr);
+                });
+            }
+        }
+
+        function setupWebSocket() {
+            try {
+                const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+                const socket = new WebSocket(protocol + window.location.host);
+
+                socket.onopen = () => console.log("EVE đã đồng bộ dữ liệu thời gian thực!");
+                socket.onmessage = async (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.action === 'speak' && isActivated) {
+                        if (currentExpression === 'sleeping') {
+                            pendingExpression = 'speaking';
+                            triggerWakeUp();
+                            return;
+                        }
+                        systemStatus.innerText = "SPEAKING";
+                        systemStatus.className = "text-sky-400 font-bold font-mono";
+                        eveVisor.classList.remove('mt-5');
+                        eveVisor.classList.add('mt-3');
+                        initAudioContext();
+                        audio.src = data.url + '?t=' + new Date().getTime();
+                        await audio.play();
+                        currentExpression = 'speaking';
+                        if (window.thinkingTimeout) clearTimeout(window.thinkingTimeout);
+                        leftArm.classList.remove('rub-chin-anim', 'slow-transition');
+                        eveHead.classList.remove('giggle-anim');
+                        document.getElementById('thinking-bubble').classList.remove('show-bubble');
+                        leftArm.style.transform = 'rotate(-35deg) translateY(12px) translateX(0px)';
+                        rightArm.style.transform = 'rotate(35deg) translateY(12px) translateX(0px)';
+                        animateEyesWithVoice();
+                    } else if (data.action === 'expression' && isActivated) {
+                        setExpression(data.value);
+                    }
+                };
+                socket.onclose = () => setTimeout(setupWebSocket, 3000);
+            } catch (e) {
+                console.warn("Chạy offline hoặc chưa có server. Bảng điều khiển thử nghiệm bên phải luôn sẵn sàng!");
+            }
+        }
+
+        function initAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                source = audioCtx.createMediaElementSource(audio);
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+                analyser.fftSize = 32;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+            }
+        }
+
+        function setExpression(exp) {
+            if (!isActivated) return;
+            if (currentExpression === 'sleeping' && exp !== 'sleeping' && exp !== 'wakeup' && !isWakingUp) {
+                pendingExpression = exp;
+                triggerWakeUp();
+                return;
+            }
+            if (exp === 'wakeup') {
+                triggerWakeUp();
+                return;
+            }
+            if (isWakingUp) return;
+
+            currentExpression = exp;
+            isSpeakingSimulated = false;
+            audio.pause();
+            resetInactivityTimer();
+
+            if (window.thinkingTimeout) clearTimeout(window.thinkingTimeout);
+            leftArm.classList.remove('rub-chin-anim', 'slow-transition');
+            eveHead.classList.remove('giggle-anim');
+            document.getElementById('thinking-bubble').classList.remove('show-bubble');
+            if (window.auraTimeout) clearTimeout(window.auraTimeout);
+            const avatar = document.getElementById('eve-avatar');
+            if (avatar) avatar.classList.remove('aura-fadein', 'aura-pulse');
+            
+            leftArm.style.opacity = '1';
+            rightArm.style.opacity = '1';
+            leftArm.style.transform = 'rotate(-10deg) translateY(20px) translateX(0px)';
+            rightArm.style.transform = 'rotate(10deg) translateY(20px) translateX(0px)';
+            leftEyePath.style.opacity = '1';
+            rightEyePath.style.opacity = '1';
+
+            if (exp === 'thinking') {
+                eveVisor.classList.remove('mt-3');
+                eveVisor.classList.add('mt-7');
+            } else {
+                eveVisor.classList.remove('mt-7');
+                eveVisor.classList.add('mt-3');
+            }
+
+            if (exp === 'happy') {
+                systemStatus.innerText = "HAPPY_STATE";
+                systemStatus.className = "text-emerald-400 font-bold font-mono";
+                rightArm.style.transform = 'rotate(110deg) translateY(-25px) translateX(0px)';
+                eveHead.classList.add('giggle-anim');
+            } else if (exp === 'sad') {
+                systemStatus.innerText = "SAD_STATE";
+                systemStatus.className = "text-rose-400 font-bold font-mono";
+                leftArm.style.transform = 'rotate(-22deg) translateY(20px) translateX(-4px)';
+                rightArm.style.transform = 'rotate(22deg) translateY(20px) translateX(4px)';
+                const bubbleText = document.getElementById('bubble-text');
+                bubbleText.innerText = '💧';
+                bubbleText.className = "absolute text-slate-800 text-4xl font-black";
+                document.getElementById('thinking-bubble').classList.add('show-bubble');
+            } else if (exp === 'thinking') {
+                systemStatus.innerText = "THINKING_STATE";
+                systemStatus.className = "text-amber-400 font-bold font-mono";
+                leftArm.classList.add('slow-transition');
+                leftArm.style.transform = 'rotate(-122deg) translateY(-41px) translateX(-25px)';
+                const bubbleText = document.getElementById('bubble-text');
+                bubbleText.innerText = '?';
+                bubbleText.className = "absolute text-slate-800 text-5xl font-black";
+                document.getElementById('thinking-bubble').classList.add('show-bubble');
+                window.thinkingTimeout = setTimeout(() => {
+                    if (currentExpression === 'thinking') {
+                        leftArm.classList.remove('thinking-pose');
+                        leftArm.classList.add('rub-chin-anim');
+                    }
+                }, 1000);
+            } else if (exp === 'sleeping') {
+                systemStatus.innerText = "SLEEPING_STATE";
+                systemStatus.className = "text-indigo-400 font-bold font-mono";
+                const avatar = document.getElementById('eve-avatar');
+                if (avatar) avatar.classList.add('aura-pulse');
+                updateEyes();
+                setTimeout(() => {
+                    if (currentExpression === 'sleeping') {
+                        leftEyePath.style.opacity = '0';
+                        rightEyePath.style.opacity = '0';
+                    }
+                }, 50);
+                leftArm.style.transform = 'rotate(-15deg) translateY(20px) translateX(12px)';
+                rightArm.style.transform = 'rotate(15deg) translateY(20px) translateX(-12px)';
+                setTimeout(() => {
+                    if (currentExpression === 'sleeping') {
+                        leftArm.style.opacity = '0';
+                        rightArm.style.opacity = '0';
+                    }
+                }, 50);
+                const bubbleText = document.getElementById('bubble-text');
+                bubbleText.innerText = 'Zzz';
+                bubbleText.className = "absolute text-slate-800 text-3xl font-black";
+                document.getElementById('thinking-bubble').classList.add('show-bubble');
+            } else {
+                systemStatus.innerText = "WAITING_COMMAND";
+                systemStatus.className = "text-emerald-400 font-bold font-mono";
+            }
+
+            updateEyes();
+            highlightControlButtons();
+        }
+
+        function highlightControlButtons() {
+            const btns = { idle: 'btn-idle', happy: 'btn-happy', thinking: 'btn-thinking', sleeping: 'btn-sleeping', wakeup: 'btn-wakeup' };
+            Object.keys(btns).forEach(key => {
+                const btn = document.getElementById(btns[key]);
+                if (btn) {
+                    if (key === currentExpression) btn.classList.add('bg-sky-500/20', 'border-sky-500');
+                    else btn.classList.remove('bg-sky-500/20', 'border-sky-500');
+                }
+            });
+        }
+
+        function triggerWakeUp() {
+            if (isWakingUp) return;
+            isWakingUp = true;
+            currentExpression = 'wakeup';
+            highlightControlButtons();
+            
+            // Giật mình nhẹ và tắt hào quang ngủ
+            if (window.auraTimeout) clearTimeout(window.auraTimeout);
+            const eveAvatar = document.getElementById('eve-avatar');
+            if (eveAvatar) eveAvatar.classList.remove('aura-fadein', 'aura-pulse');
+            const eveChar = document.querySelector('.eve-character');
+            eveChar.style.animation = 'startle 0.6s ease-out';
+            setTimeout(() => { eveChar.style.animation = 'hover 4s ease-in-out infinite'; }, 600);
+            
+            // Làm cho cánh tay bật ra cực nhanh (120ms) và nảy nhẹ (cubic-bezier) khi giật mình
+            leftArm.style.transition = 'transform 0.12s cubic-bezier(0.25, 1.5, 0.5, 1.3), opacity 0.08s ease-out';
+            rightArm.style.transition = 'transform 0.12s cubic-bezier(0.25, 1.5, 0.5, 1.3), opacity 0.08s ease-out';
+            leftEyePath.style.transition = 'opacity 0.2s ease-out';
+            rightEyePath.style.transition = 'opacity 0.2s ease-out';
+
+            leftEyePath.style.opacity = '1';
+            rightEyePath.style.opacity = '1';
+            updateEyes();
+            
+            // Hai tay vung nhẹ sang hai bên so với lúc idle (chứ không chụm hay quá rộng)
+            leftArm.style.opacity = '1';
+            rightArm.style.opacity = '1';
+            leftArm.style.transform = 'rotate(35deg) translateY(-20px) translateX(12px)';
+            rightArm.style.transform = 'rotate(-35deg) translateY(-20px) translateX(-12px)';
+            
+            const bubbleText = document.getElementById('bubble-text');
+            bubbleText.innerText = '!';
+            bubbleText.className = "absolute text-slate-800 text-5xl font-black";
+            document.getElementById('thinking-bubble').classList.add('show-bubble');
+            
+            setTimeout(() => {
+                if (currentExpression === 'wakeup') {
+                    leftEyePath.setAttribute('d', '');
+                    rightEyePath.setAttribute('d', '');
+                }
+            }, 500);
+            setTimeout(() => {
+                if (currentExpression === 'wakeup') updateEyes();
+            }, 650);
+            setTimeout(() => {
+                if (currentExpression === 'wakeup') {
+                    leftEyePath.setAttribute('d', '');
+                    rightEyePath.setAttribute('d', '');
+                }
+            }, 800);
+            setTimeout(() => {
+                if (currentExpression === 'wakeup') {
+                    updateEyes();
+                    // Đổi transition sang 1.2s để hai tay hạ xuống chậm rãi, mềm mại về tư thế idle
+                    leftArm.style.transition = 'transform 1.2s cubic-bezier(0.25, 1, 0.3, 1)';
+                    rightArm.style.transition = 'transform 1.2s cubic-bezier(0.25, 1, 0.3, 1)';
+                    leftArm.style.transform = 'rotate(-10deg) translateY(20px) translateX(0px)';
+                    rightArm.style.transform = 'rotate(10deg) translateY(20px) translateX(0px)';
+                }
+            }, 950);
+            setTimeout(() => {
+                if (currentExpression === 'wakeup') {
+                    isWakingUp = false;
+                    
+                    // Khôi phục transition mượt mà mặc định
+                    leftArm.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 1.5s ease-in-out';
+                    rightArm.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 1.5s ease-in-out';
+                    leftEyePath.style.transition = 'opacity 1.5s ease-in-out';
+                    rightEyePath.style.transition = 'opacity 1.5s ease-in-out';
+
+                    const nextExp = pendingExpression || 'idle';
+                    pendingExpression = null;
+                    setExpression(nextExp);
+                } else {
+                    isWakingUp = false;
+                    pendingExpression = null;
+                }
+            }, 2200);
+        }
+
+        function startNaturalBlinking() {
+            const blinkLoop = () => {
+                if (currentExpression === 'idle') {
+                    const originalExp = currentExpression;
+                    currentExpression = 'blink-half';
+                    updateEyes();
+                    setTimeout(() => {
+                        if (currentExpression === 'blink-half') {
+                            currentExpression = 'blink-closed';
+                            updateEyes();
+                            setTimeout(() => {
+                                if (currentExpression === 'blink-closed') {
+                                    currentExpression = originalExp;
+                                    updateEyes();
+                                }
+                            }, 80);
+                        }
+                    }, 40);
+                }
+                blinkTimeout = setTimeout(blinkLoop, 3000 + Math.random() * 3000);
+            };
+            blinkTimeout = setTimeout(blinkLoop, 4000);
+        }
+
+        function animateEyesWithVoice() {
+            if (currentExpression === 'speaking' && !audio.paused) {
+                analyser.getByteFrequencyData(dataArray);
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                let average = sum / dataArray.length;
+                let targetAmplitude = (average / 255) * 16;
+                updateEyes(targetAmplitude);
+                requestAnimationFrame(animateEyesWithVoice);
+            } else if (currentExpression === 'speaking') {
+                setExpression('idle');
+            }
+        }
+
+        function simulateSpeech(durationMs = 4500) {
+            if (!isActivated) return;
+            setExpression('idle');
+            currentExpression = 'speaking';
+            isSpeakingSimulated = true;
+            systemStatus.innerText = "SPEAKING_SIMULATION";
+            systemStatus.className = "text-sky-400 font-bold font-mono";
+            leftArm.style.transform = 'rotate(-35deg) translateY(12px) translateX(0px)';
+            rightArm.style.transform = 'rotate(35deg) translateY(12px) translateX(0px)';
+            let phase = 0;
+            function runSimulation() {
+                if (currentExpression === 'speaking' && isSpeakingSimulated) {
+                    phase += 0.25;
+                    const volume = volumeSlider.value / 100;
+                    let baseWave = Math.sin(phase) * Math.cos(phase * 0.7);
+                    let targetAmp = Math.max(-10, baseWave * 12 * volume + (Math.random() * 4 - 2) * volume);
+                    updateEyes(targetAmp);
+                    requestAnimationFrame(runSimulation);
+                }
+            }
+            runSimulation();
+            setTimeout(() => {
+                if (isSpeakingSimulated) setExpression('idle');
+            }, durationMs);
+        }
+
+        function startRandomExpressions() {
+            const nextCycle = () => {
+                if (isActivated && currentExpression === 'idle' && !isSpeakingSimulated && (audio.paused || audio.ended)) {
+                    const choice = Math.floor(Math.random() * 4);
+                    if (choice === 1) {
+                        setExpression('happy');
+                        setTimeout(() => { if (currentExpression === 'happy') setExpression('idle'); }, 3000);
+                    } else if (choice === 2) {
+                        setExpression('thinking');
+                        setTimeout(() => { if (currentExpression === 'thinking') setExpression('idle'); }, 5000);
+                    } else if (choice === 3) simulateSpeech(8000);
+                }
+                expressionCycleTimeout = setTimeout(nextCycle, 10000);
+            };
+            expressionCycleTimeout = setTimeout(nextCycle, 10000);
+        }
+
+        function resetInactivityTimer() {
+            if (inactivityTimeout) clearTimeout(inactivityTimeout);
+            if (currentExpression !== 'sleeping') {
+                inactivityTimeout = setTimeout(() => { setExpression('sleeping'); }, INACTIVITY_LIMIT);
+            }
+        }
+
+        audio.onended = () => setExpression('idle');
+
+        isActivated = true;
+        setExpression('idle');
+        setupWebSocket();
+        startNaturalBlinking();
+        startRandomExpressions();
+
+        window.addEventListener('click', resetInactivityTimer);
+        window.addEventListener('mousemove', resetInactivityTimer);
+        window.addEventListener('keydown', resetInactivityTimer);
+        window.addEventListener('touchstart', resetInactivityTimer);
+
+        // Lắng nghe sự kiện từ React Native WebView
+        function handleRNMessage(event) {
+            try {
+                const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                if (data.type === 'SET_EXPRESSION') {
+                    setExpression(data.payload);
+                } else if (data.type === 'SPEAK_SIMULATION') {
+                    simulateSpeech(data.payload || 4500);
+                } else if (data.type === 'WAKEUP') {
+                    triggerWakeUp();
+                }
+            } catch (e) {
+                console.error("RN Message parsing error", e);
+            }
+        }
+        window.addEventListener('message', handleRNMessage);
+        document.addEventListener('message', handleRNMessage);
+
+        // Gửi sự kiện khi người dùng chạm vào màn hình / EVE
+        document.body.addEventListener('click', (e) => {
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'CANVAS_TAP',
+                    currentExpression: currentExpression
+                }));
+            }
+        });
+    </script>
+</body>
+</html>

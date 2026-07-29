@@ -1,0 +1,11 @@
+{
+  "to": "ExponentPushToken[DÁN_TOKEN_MÁY_BẠN_VÀO_ĐÂY]",
+  "sound": "default",
+  "title": "🤖 EVE Notification",
+  "body": "Có thông báo mới từ hệ thống quản lý",
+  "data": {
+    "action": "speak_notification",
+    "text": "Doanh thu hệ thống hôm nay vừa đạt mốc 100 triệu đồng!",
+    "emotion": "happy"
+  }
+}

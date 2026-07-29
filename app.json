@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "EVE Voice AI",
+    "slug": "eve-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#030712"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.eve.voiceai",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Ứng dụng cần sử dụng Micro để nhận diện câu lệnh bằng giọng nói của bạn.",
+        "NSSpeechRecognitionUsageDescription": "Ứng dụng sử dụng dịch vụ nhận diện giọng nói để giao tiếp với EVE AI Assistant."
+      }
+    },
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#00f0ff"
+    },
+    "android": {
+      "googleServicesFile": "./google-services.json",
+      "notification": {
+        "icon": "./assets/icon.png",
+        "color": "#00f0ff"
+      },
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#030712"
+      },
+      "package": "com.eve.voiceai",
+      "permissions": [
+        "RECORD_AUDIO",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS",
+        "MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#00f0ff"
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Cho phép EVE nghe giọng nói của bạn để thực hiện các câu lệnh."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "41db366a-19e2-4418-9906-0bc40574baa9"
+      }
+    }
+  }
+}
