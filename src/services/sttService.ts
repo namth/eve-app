@@ -1,9 +1,26 @@
 import { Platform } from 'react-native';
 
+// Danh sách các câu ảo giác (Hallucinations) phổ biến của Whisper trên file âm thanh im lặng
+const WHISPER_HALLUCINATION_PATTERNS = [
+  /ghiền mì gõ/i,
+  /subscribe/i,
+  /đăng ký kênh/i,
+  /theo dõi kênh/i,
+  /cảm ơn các bạn đã xem/i,
+  /cảm ơn các bạn đã theo dõi/i,
+  /hãy bấm Like/i,
+  /subcribe/i,
+  /chúc các bạn/i,
+  /hãy đăng ký/i,
+  /liên hệ quảng cáo/i,
+  /video hấp dẫn/i,
+];
+
 export const sttService = {
   /**
    * Chuyển đổi tệp âm thanh thu từ Microphone thành văn bản Tiếng Việt
    * Sử dụng Groq Whisper Large V3 Turbo LPU siêu tốc (~100ms)
+   * Tích hợp bộ lọc loại bỏ hiện tượng "Ảo Giác Im Lặng" (Silence Hallucinations)
    */
   async transcribeAudio(audioUri: string): Promise<string | null> {
     const groqKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.EXPO_PUBLIC_OPENAI_API_KEY;
@@ -39,8 +56,23 @@ export const sttService = {
 
         if (response.ok) {
           const result = await response.json();
-          console.log(`[sttService] Groq Whisper SUCCESS in ${duration}ms! Transcribed text: "${result.text}"`);
-          if (result.text && result.text.trim()) return result.text.trim();
+          const rawText = result.text ? result.text.trim() : '';
+
+          console.log(`[sttService] Groq Whisper SUCCESS in ${duration}ms! Transcribed text: "${rawText}"`);
+
+          if (!rawText) return null;
+
+          // 2. BỘ LỌC KHẮC PHỤC ẢO GIÁC FILE IM LẶNG CỦA WHISPER
+          const isHallucination = WHISPER_HALLUCINATION_PATTERNS.some((pattern) =>
+            pattern.test(rawText)
+          );
+
+          if (isHallucination) {
+            console.log(`[sttService] Filtered out Whisper Silence Hallucination: "${rawText}"`);
+            return null; // Coi như file im lặng, không gửi câu rác này lên server
+          }
+
+          return rawText;
         } else {
           const errText = await response.text();
           console.warn(`[sttService] Groq Whisper API returned HTTP ${response.status}:`, errText);

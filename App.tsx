@@ -18,13 +18,18 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { EVEAvatarWebView } from './src/components/EVEAvatarWebView';
 import { StatusBadge } from './src/components/StatusBadge';
 import { ControlPanel } from './src/components/ControlPanel';
+import { ProfileSettingsModal } from './src/components/ProfileSettingsModal';
 import { useEVEState } from './src/hooks/useEVEState';
 import { n8nService } from './src/services/n8nService';
 import { audioService } from './src/services/audioService';
 import { notificationService } from './src/services/notificationService';
 import { sttService } from './src/services/sttService';
 import { notificationStorage } from './src/services/notificationStorage';
+import { peopleDatabaseService } from './src/services/peopleDatabaseService';
+import { enrollmentService } from './src/services/enrollmentService';
+import { faceRecognitionService } from './src/services/faceRecognitionService';
 import { ChatWebhookResponse, PushNotificationPayload } from './src/types/api';
+import { PersonProfile } from './src/types/personProfile';
 
 export default function App() {
   const { expression, setExpression, handleCanvasTap, isWakingUp } = useEVEState();
@@ -38,6 +43,23 @@ export default function App() {
   const [showControlUI, setShowControlUI] = useState<boolean>(false);
   const [activeNotificationQueue, setActiveNotificationQueue] = useState<PushNotificationPayload[]>([]);
 
+  // User Profile & Recognition State
+  const [currentPerson, setCurrentPerson] = useState<PersonProfile | null>(null);
+  const currentPersonRef = useRef<PersonProfile | null>(null);
+  currentPersonRef.current = currentPerson;
+
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // Enrollment State for Unknown Person
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [enrollPredictedGender, setEnrollPredictedGender] = useState<'male' | 'female' | 'unknown'>('male');
+  const [enrollFaceVector, setEnrollFaceVector] = useState<number[] | undefined>();
+
+  // Hands-Free Mode State (Default: True for natural duplex conversation)
+  const [isHandsFreeMode, setIsHandsFreeMode] = useState<boolean>(true);
+  const isHandsFreeModeRef = useRef<boolean>(true);
+  isHandsFreeModeRef.current = isHandsFreeMode;
+
   // Settings Modal State
   const [showSettings, setShowSettings] = useState(false);
   const [pushToken, setPushToken] = useState<string | null>(null);
@@ -45,41 +67,90 @@ export default function App() {
     process.env.EXPO_PUBLIC_N8N_WEBHOOK_URL || 'https://ai.oa.io.vn/webhook/eve-chat'
   );
 
+  // Idle Timer (2 minutes = 120,000 ms)
+  const idleTimeoutRef = useRef<any>(null);
+
+  const resetIdleTimer = useCallback(() => {
+    if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
+    idleTimeoutRef.current = setTimeout(() => {
+      console.log('[App] 2-minute idle timeout reached. Pausing Hands-Free VAD to save battery...');
+      setIsRecording(false);
+      audioService.stopRecording();
+      setExpression('sleeping');
+    }, 120000); // 2 phút
+  }, [setExpression]);
+
+  // Finish recording ref to avoid closure ordering issues
+  const finishRecordingRef = useRef<() => Promise<void>>(async () => {});
+
   /**
-   * Xử lý và phát âm thanh cho hàng đợi thông báo (Dù có 1 hay nhiều thông báo):
-   * - Tạo câu mở đầu ngẫu nhiên tự nhiên (Có tính số lượng N)
-   * - Đọc trực tiếp nếu có 1 thông báo, hoặc đọc kiểu liệt kê "Một là... Hai là..." nếu có nhiều thông báo
-   * - Tạo câu kết thúc ngẫu nhiên ("Hết ạ", "Anh có chỉ thị gì không ạ?").
+   * Bắt đầu ghi âm với Real-Time VAD (Tự động ngắt sau 800ms im lặng & hỗ trợ Smart Barge-In)
+   */
+  const startVADListening = useCallback(async () => {
+    resetIdleTimer();
+    setIsRecording(true);
+    const success = await audioService.startRecording({
+      silenceThresholdMs: 800,
+      onSpeechEnd: () => {
+        console.log('[App] VAD 800ms silence auto-stop triggered!');
+        if (finishRecordingRef.current) {
+          finishRecordingRef.current();
+        }
+      },
+      onBargeIn: () => {
+        console.log('[App] Smart Barge-in triggered! Halting TTS playback...');
+        setExpression('thinking');
+      },
+      checkIsLookingAtEVE: () => {
+        // Kiểm tra hướng nhìn tức thời
+        return faceRecognitionService.checkIsLookingAtEVE({ yaw: 0, pitch: 0, roll: 0 }, 25, 25);
+      },
+    });
+    if (!success) {
+      setIsRecording(false);
+    }
+  }, [resetIdleTimer, setExpression]);
+
+  /**
+   * Xử lý và phát âm thanh cho hàng đợi thông báo:
+   * BẢO MẬT: CHỈ PHÁT ĐỌC THÔNG BÁO KHI CURRENT PERSON LÀ ADMIN
    */
   const processNotificationQueue = useCallback(
-    async (customQueue?: PushNotificationPayload[]): Promise<boolean> => {
+    async (
+      customQueue?: PushNotificationPayload[],
+      overridePerson?: PersonProfile | null
+    ): Promise<boolean> => {
+      const activePerson = overridePerson !== undefined ? overridePerson : currentPersonRef.current;
+      console.log('[App] Processing notification queue. Active Person Role:', activePerson?.role);
+
+      // QUY TẮC BẢO MẬT: Chỉ phát đọc thông báo nếu người dùng có role ADMIN
+      if (!activePerson || activePerson.role !== 'admin') {
+        console.log('[App] Security restriction: Current user is NOT ADMIN. Keeping notifications stored safely.');
+        return false;
+      }
+
       const queue = customQueue || (await notificationStorage.getNotificationQueue());
-      console.log('[App] Processing notification queue:', queue);
+      console.log('[App] Processing notification queue for ADMIN:', queue?.length);
 
       if (!queue || queue.length === 0) return false;
 
-      // Cập nhật giao diện UI hiển thị thẻ danh sách thông báo
       setActiveNotificationQueue(queue);
 
-      // 1. Cơ chế chờ: Nếu EVE đang trong quá trình WakeUp / Khởi tạo, chờ cho đến khi hoàn tất
       while (isWakingUp) {
         await new Promise((res) => setTimeout(res, 200));
       }
 
-      // Format câu thoại tự nhiên chuẩn tiếng Việt với Mở đầu -> Đếm N -> Liệt kê 1, 2... -> Kết thúc
-      const { speechText, displayTitle, targetEmotion } =
-        notificationStorage.formatNaturalSpeech(queue);
+      const { speechText, targetEmotion } =
+        notificationStorage.formatNaturalSpeech(queue, activePerson);
 
       setLastReplyText(speechText);
       setExpression('speaking');
 
-      // 2. Cơ chế chờ hoàn thành: EVE phát hết toàn bộ câu thoại trước khi kết thúc nhiệm vụ
       return new Promise<boolean>((resolve) => {
         audioService
           .playTTS(speechText, undefined, async () => {
-            console.log('[App] EVE completely finished reading all queued notifications!');
+            console.log('[App] EVE completely finished reading queued notifications to Admin!');
             setExpression(targetEmotion);
-            // Xóa khỏi hàng đợi sau khi đã báo cáo xong 100%
             await notificationStorage.clearNotificationQueue();
             setTimeout(() => setExpression('idle'), 2000);
             resolve(true);
@@ -94,6 +165,80 @@ export default function App() {
     [isWakingUp, setExpression]
   );
 
+  // Guard against React 18 Strict Mode double scan on mount
+  const hasScannedRef = useRef(false);
+
+  /**
+   * Chạy quy trình Nhận diện Khuôn mặt / Giọng nói (Scan & Identify) với bộ đệm ổn định 1.5s
+   */
+  const runScanAndIdentify = useCallback(async () => {
+    console.log('[App] Running Scan and Identify with Stable Face Verification...');
+    try {
+      // Tích lũy bộ đệm rõ nét 1.5s (Confidence >= 80% & Có khuôn mặt thật)
+      const { matchedPerson, predictedGender, faceVector, isValid, isFaceDetected } =
+        await faceRecognitionService.verifyStableFaceFrame(1500);
+
+      if (!isValid || !isFaceDetected) {
+        console.log('[App] No face detected or frame blurry. Keeping EVE in Idle state without greeting...');
+        setExpression('idle');
+        return;
+      }
+
+      if (matchedPerson) {
+        // Đã nhận diện được người quen trong CSDL
+        setCurrentPerson(matchedPerson);
+        console.log(`[App] Welcome back ${matchedPerson.name} (${matchedPerson.role})`);
+
+        // Kiểm tra xem Admin có thông báo chưa đọc trong hàng đợi không để tránh phát tiếng chào 2 lần lặp nhau
+        const pendingQueue = await notificationStorage.getNotificationQueue();
+        const hasPendingNotif = matchedPerson.role === 'admin' && pendingQueue && pendingQueue.length > 0;
+
+        if (hasPendingNotif) {
+          // Nếu có thông báo, processNotificationQueue sẽ phát câu mở đầu xưng hô kèm báo cáo (Tránh chào 2 lần lặp nhau)
+          console.log('[App] Admin has pending notifications. Reading notification speech directly...');
+          await processNotificationQueue(undefined, matchedPerson);
+        } else {
+          // Nếu không có thông báo, EVE phát câu chào mừng
+          const hasName = matchedPerson.name && matchedPerson.name.trim().length > 0;
+          const pronoun = matchedPerson.preferred_pronoun || 'Anh';
+          const pronounLower = pronoun.toLowerCase();
+
+          const welcomeSpeech = hasName
+            ? `Em chào ${pronoun} ${matchedPerson.name}!`
+            : `Em chào ${pronounLower}! Lần trước em chưa biết tên của ${pronounLower}, lần này cho em biết tên của ${pronounLower} nhé ạ?`;
+
+          setLastReplyText(welcomeSpeech);
+          setExpression('happy');
+
+          await audioService.playTTS(welcomeSpeech, undefined, () => {
+            setExpression('idle');
+          });
+        }
+      } else {
+        // Chưa có dữ liệu (Người lạ) -> Bắt đầu luồng hỏi & đăng ký người mới lễ phép
+        console.log('[App] Unknown person detected clearly. Starting enrollment workflow...');
+        setIsEnrolling(true);
+        setEnrollPredictedGender(predictedGender);
+        setEnrollFaceVector(faceVector);
+
+        const isMale = predictedGender === 'male';
+        const pronoun = isMale ? 'anh' : 'chị';
+
+        const greetingQuestion = `Em chào ${pronoun}! Em là EVE, em chưa biết tên của ${pronoun}. ${pronoun.charAt(0).toUpperCase() + pronoun.slice(1)} tên là gì ạ?`;
+        setLastReplyText(greetingQuestion);
+        setExpression('speaking');
+
+        await audioService.playTTS(greetingQuestion, undefined, () => {
+          setExpression('idle');
+          // Tự động bật micro thu âm câu trả lời tên tuổi của người dùng
+          handleMicToggle();
+        });
+      }
+    } catch (err) {
+      console.warn('[App] Error in scan and identify:', err);
+    }
+  }, [processNotificationQueue, setExpression]);
+
   /**
    * Lắng nghe khi có 1 Push Notification mới đến
    */
@@ -107,63 +252,76 @@ export default function App() {
   );
 
   /**
-   * Kiểm tra và tự động phát thông báo chưa đọc từ đĩa cứng khi vừa vào App
+   * Kiểm tra và tự động phát thông báo chưa đọc từ đĩa cứng khi vừa vào App (Chỉ khi camera thấy người)
    */
   const checkAndPlayPendingNotification = useCallback(async () => {
+    const isFaceDetected = faceRecognitionService.getFaceDetectedState();
+    if (!isFaceDetected) {
+      console.log('[App] Camera has not detected any face. Holding pending notifications...');
+      return;
+    }
+
     const queue = await notificationStorage.getNotificationQueue();
     if (queue && queue.length > 0) {
       console.log('[App] Found pending notification queue in storage, count:', queue.length);
       setActiveNotificationQueue(queue);
-      setTimeout(() => {
-        processNotificationQueue(queue);
-      }, 800);
+      if (currentPersonRef.current?.role === 'admin') {
+        setTimeout(() => {
+          processNotificationQueue(queue);
+        }, 800);
+      }
     }
   }, [processNotificationQueue]);
 
   /**
-   * Đăng ký Push Notification và lắng nghe tin nhắn thời gian thực khi đang mở/tắt App
+   * Khởi tạo App: Đăng ký Push Token, Lắng nghe thông báo & Chạy Nhận diện Ban đầu
    */
   useEffect(() => {
+    if (hasScannedRef.current) return;
+    hasScannedRef.current = true;
+
     notificationService.registerForPushNotifications().then((token) => {
       if (token) setPushToken(token);
     });
 
-    // 1. Lắng nghe khi đang MỞ APP (Foreground)
+    // 0. Xin quyền Camera từ HĐH (iOS / Android)
+    faceRecognitionService.requestCameraPermission();
+
+    // 1. Lắng nghe Foreground Notification
     const foregroundSub = notificationService.addForegroundNotificationListener(
       (payload) => {
-        console.log('[App] Received message while App OPEN (Foreground):', payload);
         handleIncomingSpeech(payload);
       }
     );
 
-    // 2. Lắng nghe khi BẤM VÀO NOTIFICATION TỪ NGOÀI APP (Background / Lockscreen)
+    // 2. Lắng nghe Background Notification Tapped
     const backgroundSub = notificationService.addNotificationResponseListener(
       (payload) => {
-        console.log('[App] Clicked notification from Background/Lockscreen:', payload);
         handleIncomingSpeech(payload);
       }
     );
 
-    // 3. Xử lý Cold Start & Quá trình khởi tạo App: Đọc thông báo còn chờ từ đĩa cứng
-    notificationService.getInitialNotification().then((initialPayload) => {
-      if (initialPayload) {
-        console.log('[App] Cold Start notification detected:', initialPayload);
-        notificationStorage.addNotificationToQueue(initialPayload).then((updatedQueue) => {
-          processNotificationQueue(updatedQueue);
-        });
-      } else {
-        checkAndPlayPendingNotification();
-      }
+    // 3. Khởi chạy nhận diện người dùng On-device
+    runScanAndIdentify().then(() => {
+      notificationService.getInitialNotification().then((initialPayload) => {
+        if (initialPayload) {
+          notificationStorage.addNotificationToQueue(initialPayload).then((updatedQueue) => {
+            processNotificationQueue(updatedQueue);
+          });
+        } else {
+          checkAndPlayPendingNotification();
+        }
+      });
     });
 
     return () => {
       foregroundSub.remove();
       backgroundSub.remove();
     };
-  }, [handleIncomingSpeech, processNotificationQueue, checkAndPlayPendingNotification]);
+  }, [handleIncomingSpeech, processNotificationQueue, checkAndPlayPendingNotification, runScanAndIdentify]);
 
   /**
-   * Gửi câu lệnh bằng văn bản (hoặc đã chuyển từ STT) lên n8n Webhook
+   * Gửi câu lệnh bằng văn bản lên n8n Webhook
    */
   const handleSendMessage = async (customMessage?: string) => {
     const msgToSend = (customMessage || inputMessage).trim();
@@ -174,9 +332,11 @@ export default function App() {
     setExpression('thinking');
 
     try {
+      // Gửi câu thoại đính kèm current_person profile metadata
       const response: ChatWebhookResponse = await n8nService.sendChatMessage(
         msgToSend,
-        currentSessionId
+        currentSessionId,
+        currentPerson
       );
 
       console.log('[App] n8n Response:', response);
@@ -184,15 +344,34 @@ export default function App() {
       setCurrentSessionId(response.session_id);
       setPendingConfirm(!!response.require_confirm);
 
-      // Cập nhật biểu cảm cảm xúc EVE theo response
+      // TỰ ĐỘNG ĐÍNH CHÍNH PROFILE NẾU N8N TRẢ VỀ UPDATE_PERSON
+      if (response.update_person && currentPerson) {
+        const updatedProfile: PersonProfile = {
+          ...currentPerson,
+          name: response.update_person.name || currentPerson.name,
+          age: response.update_person.age !== undefined ? response.update_person.age : currentPerson.age,
+          gender: response.update_person.gender || currentPerson.gender,
+          preferred_pronoun: response.update_person.preferred_pronoun || currentPerson.preferred_pronoun,
+          role: response.update_person.role || currentPerson.role,
+        };
+        await peopleDatabaseService.savePersonProfile(updatedProfile);
+        setCurrentPerson(updatedProfile);
+        console.log('[App] Voice Profile Correction applied:', updatedProfile.name);
+      }
+
       const targetEmotion = response.emotion || 'happy';
       setExpression('speaking');
 
-      // Phát âm thanh câu trả lời từ n8n (audio_url từ ElevenLabs / OpenAI hoặc Google Stream)
       await audioService.playTTS(response.reply_text, response.audio_url, () => {
         setExpression(targetEmotion);
-        // Sau 2s luôn về idle (fidget sẽ tự chạy lại)
-        setTimeout(() => setExpression('idle'), 2000);
+        setTimeout(() => {
+          setExpression('idle');
+          // NẾU ĐANG Ở CHẾ ĐỘ HANDS-FREE: TỰ ĐỘNG BẬT LẠI MIC VAD LẮNG NGHE CÂU TIẾP THEO
+          if (isHandsFreeModeRef.current) {
+            console.log('[App] Auto Re-Listen Loop: Hands-Free VAD restarted!');
+            startVADListening();
+          }
+        }, 1000);
       });
     } catch (error: any) {
       console.error('[App] Error sending message to n8n:', error);
@@ -205,72 +384,115 @@ export default function App() {
   };
 
   /**
-   * Xử lý 1-chạm để Bật/Tắt Ghi Âm nói với EVE
+   * Xử lý 1-chạm Bật/Tắt Ghi Âm Micro với Hands-Free VAD
    */
-  const autoStopTimerRef = useRef<any>(null);
-
   const handleMicToggle = async () => {
     if (isRecording) {
       await finishRecordingAndSend();
     } else {
-      setIsRecording(true);
-      const success = await audioService.startRecording();
-      if (!success) {
-        setIsRecording(false);
-        Alert.alert('Cảnh báo', 'Không thể khởi tạo Microphone.');
-        return;
-      }
-
-      if (autoStopTimerRef.current) clearTimeout(autoStopTimerRef.current);
-      autoStopTimerRef.current = setTimeout(() => {
-        console.log('[App] Auto-stop triggered after 8s silence');
-        finishRecordingAndSend();
-      }, 8000);
+      await startVADListening();
     }
   };
 
   const finishRecordingAndSend = async () => {
-    if (autoStopTimerRef.current) {
-      clearTimeout(autoStopTimerRef.current);
-      autoStopTimerRef.current = null;
-    }
     setIsRecording(false);
     const audioUri = await audioService.stopRecording();
     console.log('[App] Recorded audio URI:', audioUri);
-    console.log('[App] Groq API Key present:', !!process.env.EXPO_PUBLIC_GROQ_API_KEY);
 
     if (audioUri) {
-      console.log('[App] Sending audio to STT + n8n...');
       handleSendAudio(audioUri);
     } else {
-      console.warn('[App] No audio URI returned from recording!');
       Alert.alert('Lỗi', 'Không thu được âm thanh. Vui lòng thử lại.');
     }
   };
+  finishRecordingRef.current = finishRecordingAndSend;
 
   /**
-   * Phương Án 2: Chuyển đổi giọng nói thu từ Microphone thành văn bản Tiếng Việt qua Groq Whisper LPU
-   * Sau đó CHỈ gửi duy nhất văn bản "message" dạng JSON tinh gọn tới n8n Webhook
+   * Xử lý âm thanh STT và phân nhánh luồng Chat hoặc luồng Đăng ký Người mới (Enrollment)
    */
   const handleSendAudio = async (audioUri: string) => {
     setIsProcessing(true);
     setExpression('thinking');
 
     try {
-      // 1. Chuyển đổi giọng nói thu từ Micro thành văn bản Tiếng Việt qua Groq Whisper LPU (~100ms)
       const transcribedText = await sttService.transcribeAudio(audioUri);
-      console.log('[App] Groq Transcribed Text:', transcribedText);
+      console.log('[App] Transcribed Text:', transcribedText);
 
-      if (transcribedText) {
-        // 2. CHỈ GỬI VĂN BẢN THẬT VÀO N8N WEBHOOK (Phương Án 2)
-        await handleSendMessage(transcribedText);
-      } else {
-        setLastReplyText('Không thể nhận diện được giọng nói. Vui lòng thử lại.');
+      if (!transcribedText) {
+        setLastReplyText('Không nhận diện được câu nói. Vui lòng thử lại.');
         setExpression('idle');
         setIsProcessing(false);
+        return;
       }
+
+      // LUỒNG ĐĂNG KÝ NGƯỜI MỚI (ENROLLMENT WORKFLOW)
+      if (isEnrolling) {
+        setIsEnrolling(false);
+        setExpression('thinking');
+
+        const enrollRes = await enrollmentService.enrollNewPerson(
+          transcribedText,
+          enrollPredictedGender,
+          enrollFaceVector
+        );
+
+        setCurrentPerson(enrollRes.person);
+        setLastReplyText(enrollRes.replyText);
+        setExpression('happy');
+
+        await audioService.playTTS(enrollRes.replyText, enrollRes.audioUrl, () => {
+          setExpression('idle');
+        });
+        setIsProcessing(false);
+        return;
+      }
+
+      // LUỒNG CHAT N8N THÔNG THƯỜNG - PRE-SEND BIOMETRICS & GAZE RE-VERIFICATION
+      const biometricsCheck = await faceRecognitionService.scanAndIdentifyCurrentPerson();
+
+      // BỘ LỌC HƯỚNG NHÌN GAZE DETECTION: Bỏ qua âm thanh nếu người dùng quay mặt đi nơi khác nói chuyện với người xung quanh
+      if (!biometricsCheck.isLookingAtEVE) {
+        console.log('[App] Gaze Detection: User is looking away (Head Pose Yaw/Pitch > 25°). Discarding audio.');
+        setExpression('idle');
+        setIsProcessing(false);
+        if (isHandsFreeModeRef.current) {
+          startVADListening();
+        }
+        return;
+      }
+
+      if (biometricsCheck.matchedPerson) {
+        if (biometricsCheck.matchedPerson.id !== currentPersonRef.current?.id) {
+          console.log(
+            `[App] Speaker switch detected! Changing active person to: ${biometricsCheck.matchedPerson.name} (${biometricsCheck.matchedPerson.role})`
+          );
+          setCurrentPerson(biometricsCheck.matchedPerson);
+        }
+      } else {
+        // Người lạ đột ngột cất tiếng nói -> Chuyển ngay sang luồng Đăng ký người mới
+        console.log('[App] Unknown speaker detected mid-conversation! Switching to enrollment workflow...');
+        setIsEnrolling(true);
+        setEnrollPredictedGender(biometricsCheck.predictedGender);
+        setEnrollFaceVector(biometricsCheck.faceVector);
+
+        const isMale = biometricsCheck.predictedGender === 'male';
+        const pronoun = isMale ? 'anh' : 'chị';
+
+        const greetingQuestion = `Em chào ${pronoun}! Em chưa biết tên của ${pronoun}. ${pronoun.charAt(0).toUpperCase() + pronoun.slice(1)} tên là gì ạ?`;
+        setLastReplyText(greetingQuestion);
+        setExpression('speaking');
+
+        await audioService.playTTS(greetingQuestion, undefined, () => {
+          setExpression('idle');
+          handleMicToggle();
+        });
+        setIsProcessing(false);
+        return;
+      }
+
+      await handleSendMessage(transcribedText);
     } catch (error: any) {
-      console.error('[App] Error processing audio STT:', error);
+      console.error('[App] Error processing STT audio:', error);
       const errMsg = error?.message || 'Không thể chuyển đổi giọng nói thành văn bản.';
       setLastReplyText(`Lỗi STT: ${errMsg}`);
       setExpression('idle');
@@ -278,9 +500,6 @@ export default function App() {
     }
   };
 
-  /**
-   * Xử lý nút Xác nhận "Đồng ý" hoặc "Hủy" cho Lệnh Cấp 2
-   */
   const handleConfirmChoice = (confirmed: boolean) => {
     const choiceText = confirmed ? 'Đồng ý' : 'Hủy';
     setPendingConfirm(false);
@@ -292,33 +511,66 @@ export default function App() {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#030712" />
 
-        {/* Floating Control Panel (Nút Biểu Cảm Nổi ở Cạnh Phải - Chỉ hiển thị khi bật Cài đặt) */}
+        {/* Floating Control Panel & Open Profile Settings */}
         {showControlUI && (
           <ControlPanel
             currentExpression={expression}
             onSelectExpression={(exp) => setExpression(exp)}
+            onOpenSettings={() => setShowProfileModal(true)}
           />
         )}
 
         {/* Header Bar */}
         <View style={styles.header}>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>EVE Voice AI</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.headerTitle}>EVE Voice AI</Text>
+              {currentPerson && (
+                <TouchableOpacity
+                  style={[
+                    styles.roleBadgeHeader,
+                    currentPerson.role === 'admin' ? styles.roleBadgeAdmin : styles.roleBadgeFriend,
+                  ]}
+                  onPress={() => setShowProfileModal(true)}
+                >
+                  <Text style={styles.roleBadgeHeaderText}>
+                    {currentPerson.role === 'admin' ? '⚡ ADMIN' : '👤 FRIEND'}: {currentPerson.name}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <Text style={styles.headerSubtitle}>n8n Agent Brain</Text>
           </View>
-          <TouchableOpacity
-            style={styles.settingsBtn}
-            onPress={() => setShowSettings(true)}
-          >
-            <Text style={styles.settingsIcon}>⚙️</Text>
-          </TouchableOpacity>
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={styles.profileQuickBtn}
+              onPress={() => setShowProfileModal(true)}
+            >
+              <Text style={styles.settingsIcon}>👤</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsBtn}
+              onPress={() => setShowSettings(true)}
+            >
+              <Text style={styles.settingsIcon}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Top Status Badge - Chỉ hiển thị khi bật trong Cài đặt */}
+        {/* Top Status Badge */}
         {showControlUI && (
-          <View style={styles.topStatusContainer}>
-            <StatusBadge expression={expression} isListening={isRecording} />
-          </View>
+          <>
+            <View style={styles.topStatusContainer}>
+              <StatusBadge expression={expression} isListening={isRecording} />
+            </View>
+            <ControlPanel
+              currentExpression={expression}
+              onSelectExpression={setExpression}
+              onOpenSettings={() => setShowSettings(true)}
+              onTriggerScan={runScanAndIdentify}
+            />
+          </>
         )}
 
         <ScrollView
@@ -337,8 +589,8 @@ export default function App() {
             />
           </TouchableOpacity>
 
-          {/* Active Push Notification Card Banner (Hàng đợi thông báo) */}
-          {activeNotificationQueue && activeNotificationQueue.length > 0 && (
+          {/* Active Push Notification Card Banner (Hiển thị cho Admin) */}
+          {activeNotificationQueue && activeNotificationQueue.length > 0 && currentPerson?.role === 'admin' && (
             <View style={styles.notifCard}>
               <View style={styles.notifCardHeader}>
                 <Text style={styles.notifCardTitle}>
@@ -456,7 +708,21 @@ export default function App() {
           </TouchableOpacity>
         </KeyboardAvoidingView>
 
-        {/* Modal Settings */}
+        {/* Profile Settings Modal */}
+        <ProfileSettingsModal
+          visible={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          currentPerson={currentPerson}
+          onSelectPerson={(person) => {
+            setCurrentPerson(person);
+            if (person.role === 'admin') {
+              processNotificationQueue(undefined, person);
+            }
+          }}
+          onTriggerScan={runScanAndIdentify}
+        />
+
+        {/* Modal Settings General */}
         <Modal visible={showSettings} animationType="slide" transparent>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -506,7 +772,7 @@ export default function App() {
                       Alert.alert('Đã lấy Push Token', pushToken);
                     }}
                   >
-                    <Text style={styles.copyTokenText}>📋 Xem / Coppy Token</Text>
+                    <Text style={styles.copyTokenText}>📋 Xem / Copy Token</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -541,7 +807,7 @@ export default function App() {
                   processNotificationQueue();
                 }}
               >
-                <Text style={[styles.testNotifText, { color: '#34d399' }]}>🚀 Thử nhận 3 thông báo liên tiếp (Tự nhiên)</Text>
+                <Text style={[styles.testNotifText, { color: '#34d399' }]}>🚀 Thử nhận 3 thông báo liên tiếp</Text>
               </TouchableOpacity>
 
               <View style={styles.modalButtons}>
@@ -569,8 +835,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(30, 41, 59, 0.6)',
   },
@@ -579,14 +845,44 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: '#f8fafc',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     letterSpacing: 0.5,
+  },
+  roleBadgeHeader: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  roleBadgeAdmin: {
+    backgroundColor: '#00f0ff22',
+    borderColor: '#00f0ff',
+    borderWidth: 1,
+  },
+  roleBadgeFriend: {
+    backgroundColor: '#ffbb0022',
+    borderColor: '#ffbb00',
+    borderWidth: 1,
+  },
+  roleBadgeHeaderText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   headerSubtitle: {
     color: '#0ea5e9',
     fontSize: 11,
     fontWeight: '600',
+  },
+  profileQuickBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 240, 255, 0.15)',
+    borderColor: '#00f0ff66',
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   settingsBtn: {
     width: 36,
@@ -855,8 +1151,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-
-  /* Notification Card UI & Replay Speech Button Styles */
   notifCard: {
     backgroundColor: 'rgba(15, 23, 42, 0.95)',
     borderWidth: 1.5,

@@ -1,16 +1,34 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { EVEExpression } from '../types/api';
+import { faceRecognitionService } from '../services/faceRecognitionService';
 
 interface Props {
   currentExpression: EVEExpression;
   onSelectExpression: (exp: EVEExpression) => void;
+  onOpenSettings?: () => void;
+  onTriggerScan?: () => void;
 }
 
 export const ControlPanel: React.FC<Props> = ({
   currentExpression,
   onSelectExpression,
+  onOpenSettings,
+  onTriggerScan,
 }) => {
+  const [isFaceDetected, setIsFaceDetected] = useState<boolean>(
+    faceRecognitionService.getFaceDetectedState()
+  );
+
+  const toggleCameraFaceState = () => {
+    const newState = !isFaceDetected;
+    setIsFaceDetected(newState);
+    faceRecognitionService.setFaceDetectedState(newState);
+    if (newState && onTriggerScan) {
+      onTriggerScan();
+    }
+  };
+
   const expressions: { key: EVEExpression; label: string; icon: string }[] = [
     { key: 'idle', label: 'Idle', icon: '🤖' },
     { key: 'happy', label: 'Happy', icon: '😄' },
@@ -24,6 +42,31 @@ export const ControlPanel: React.FC<Props> = ({
 
   return (
     <View style={styles.floatingPanel}>
+      {/* Nút giả lập Bịt Mắt Camera / Mở Camera để Test */}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        style={[
+          styles.btn,
+          {
+            borderColor: isFaceDetected ? '#10b981' : '#f43f5e',
+            backgroundColor: isFaceDetected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)',
+          },
+        ]}
+        onPress={toggleCameraFaceState}
+      >
+        <Text style={styles.btnIcon}>{isFaceDetected ? '📷' : '🙈'}</Text>
+      </TouchableOpacity>
+
+      {onOpenSettings && (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={[styles.btn, { borderColor: '#00f0ff', backgroundColor: 'rgba(0, 240, 255, 0.2)' }]}
+          onPress={onOpenSettings}
+        >
+          <Text style={styles.btnIcon}>⚙️</Text>
+        </TouchableOpacity>
+      )}
+
       {expressions.map((item) => {
         const isActive = currentExpression === item.key;
         return (

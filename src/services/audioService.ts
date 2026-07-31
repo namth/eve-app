@@ -1,9 +1,11 @@
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
+import { PermissionsAndroid, Platform } from 'react-native';
 
 class AudioService {
   private soundObject: Audio.Sound | null = null;
   private recordingObject: Audio.Recording | null = null;
+  private isPlayingTTSStatus: boolean = false;
 
   constructor() {
     Audio.setAudioModeAsync({
@@ -14,13 +16,24 @@ class AudioService {
     }).catch((err) => console.log('[AudioService] Init audio mode error:', err));
   }
 
+  public get isPlayingTTS(): boolean {
+    return this.isPlayingTTSStatus;
+  }
+
   /**
-   * Phát âm thanh từ URL (ví dụ ElevenLabs / OpenAI TTS audio file trả về từ n8n)
-   * Nếu không có URL hoặc lỗi -> Dùng Expo Native Speech làm fallback
+   * Phát âm thanh TTS (từ URL n8n / Edge-TTS / Native)
    */
   async playTTS(text: string, audioUrl?: string, onEnd?: () => void): Promise<void> {
     try {
       await this.stopAudio();
+      this.isPlayingTTSStatus = true;
+
+      const handlePlaybackEnd = () => {
+        this.isPlayingTTSStatus = false;
+        this.soundObject?.unloadAsync();
+        this.soundObject = null;
+        if (onEnd) onEnd();
+      };
 
       // 1. Ưu tiên 1: Audio URL từ n8n (ElevenLabs / OpenAI / Edge-TTS)
       if (audioUrl) {
@@ -33,15 +46,13 @@ class AudioService {
 
         sound.setOnPlaybackStatusUpdate((status) => {
           if (status.isLoaded && status.didJustFinish) {
-            this.soundObject?.unloadAsync();
-            this.soundObject = null;
-            if (onEnd) onEnd();
+            handlePlaybackEnd();
           }
         });
         return;
       }
 
-      // 2. Ưu tiên 2: Phát qua Edge-TTS Giọng Hoài Mỹ (vi-VN-HoaiMyNeural) hoặc Google AI Neural Voice Stream
+      // 2. Ưu tiên 2: Phát qua Edge-TTS / Stream Proxy
       const encodedText = encodeURIComponent(text);
       const edgeTtsProxy = process.env.EXPO_PUBLIC_EDGE_TTS_URL;
       const ttsStreamUrl = edgeTtsProxy
@@ -57,28 +68,33 @@ class AudioService {
 
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
-          this.soundObject?.unloadAsync();
-          this.soundObject = null;
-          if (onEnd) onEnd();
+          handlePlaybackEnd();
         }
       });
     } catch (error) {
       console.warn('[AudioService] Neural stream error, falling back to Native TTS:', error);
-      // 3. Fallback Native Speech ở tốc độ cao (rate: 1.15, pitch: 1.05)
+      this.isPlayingTTSStatus = true;
       Speech.speak(text, {
         language: 'vi-VN',
         pitch: 1.05,
         rate: 1.15,
-        onDone: onEnd,
-        onError: onEnd,
+        onDone: () => {
+          this.isPlayingTTSStatus = false;
+          if (onEnd) onEnd();
+        },
+        onError: () => {
+          this.isPlayingTTSStatus = false;
+          if (onEnd) onEnd();
+        },
       });
     }
   }
 
   /**
-   * Dừng âm thanh đang phát
+   * Dừng âm thanh đang phát (cho tính năng Barge-in)
    */
   async stopAudio(): Promise<void> {
+    this.isPlayingTTSStatus = false;
     Speech.stop();
     if (this.soundObject) {
       try {
@@ -90,11 +106,15 @@ class AudioService {
   }
 
   /**
-   * Bắt đầu ghi âm qua Microphone với cơ chế tự động dọn dẹp đối tượng cũ
+   * Bắt đầu ghi âm với Real-Time VAD Metering (800ms silence threshold & Barge-in)
    */
-  async startRecording(): Promise<boolean> {
+  async startRecording(options?: {
+    silenceThresholdMs?: number;
+    onSpeechEnd?: () => void;
+    onBargeIn?: () => void;
+    checkIsLookingAtEVE?: () => boolean;
+  }): Promise<boolean> {
     try {
-      // Dọn dẹp recording cũ nếu chưa được unload
       if (this.recordingObject) {
         try {
           await this.recordingObject.stopAndUnloadAsync();
@@ -103,6 +123,12 @@ class AudioService {
       }
 
       const permission = await Audio.requestPermissionsAsync();
+      if (Platform.OS === 'android') {
+        try {
+          await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+        } catch (e) {}
+      }
+
       if (!permission.granted) {
         console.warn('[AudioService] Microphone permission not granted');
         return false;
@@ -115,10 +141,67 @@ class AudioService {
         playThroughEarpieceAndroid: false,
       });
 
+      // Cấu hình ghi âm bật Metering đo âm lượng dB thời gian thực
+      const recordingOptions = {
+        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        isMeteringEnabled: true,
+      };
+
       const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
+        recordingOptions,
+        undefined,
+        100 // Cập nhật metering mỗi 100ms
       );
+
       this.recordingObject = recording;
+
+      const silenceThreshold = options?.silenceThresholdMs || 800; // 800ms
+      let hasStartedSpeaking = false;
+      let silenceStartTime: number | null = null;
+      let isTriggeredEnd = false;
+
+      recording.setOnRecordingStatusUpdate((status) => {
+        if (!status.isRecording || isTriggeredEnd) return;
+
+        const metering = status.metering ?? -160; // dB value
+
+        // 1. CẮT NGANG THÔNG MINH (Smart Barge-In): Chỉ kích hoạt khi ĐỒNG THỜI có tiếng nói (> -30dB) VÀ Đang nhìn vào EVE
+        if (this.isPlayingTTSStatus && metering > -30) {
+          const isLooking = options?.checkIsLookingAtEVE ? options.checkIsLookingAtEVE() : true;
+          if (isLooking) {
+            console.log('[AudioService] Smart Barge-in triggered! (Volume > -30dB AND Looking at EVE). Halting TTS...');
+            this.stopAudio();
+            if (options?.onBargeIn) options.onBargeIn();
+            return;
+          } else {
+            console.log('[AudioService] Noise > -30dB detected during TTS, but user is NOT looking at EVE. Ignoring Barge-in.');
+          }
+        }
+
+        // 2. VAD: Phát hiện bắt đầu nói
+        if (metering > -35) {
+          if (!hasStartedSpeaking) {
+            console.log('[AudioService] VAD: Speech started (Metering:', metering, 'dB)');
+            hasStartedSpeaking = true;
+          }
+          silenceStartTime = null; // Reset bộ đếm im lặng
+        } else if (hasStartedSpeaking && metering < -40) {
+          // 3. VAD: Tính toán khoảng thời gian im lặng sau khi đã nói
+          if (!silenceStartTime) {
+            silenceStartTime = Date.now();
+          } else {
+            const silenceDuration = Date.now() - silenceStartTime;
+            if (silenceDuration >= silenceThreshold) {
+              console.log(`[AudioService] VAD: Speech end detected after ${silenceDuration}ms silence! Auto-stopping...`);
+              isTriggeredEnd = true;
+              if (options?.onSpeechEnd) {
+                options.onSpeechEnd();
+              }
+            }
+          }
+        }
+      });
+
       return true;
     } catch (err) {
       console.error('[AudioService] Start recording error:', err);
@@ -133,7 +216,7 @@ class AudioService {
   }
 
   /**
-   * Dừng ghi âm và trả về URI của file âm thanh thu được
+   * Dừng ghi âm và trả về URI
    */
   async stopRecording(): Promise<string | null> {
     if (!this.recordingObject) return null;

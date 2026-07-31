@@ -15,7 +15,8 @@
       "bundleIdentifier": "com.eve.voiceai",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Ứng dụng cần sử dụng Micro để nhận diện câu lệnh bằng giọng nói của bạn.",
-        "NSSpeechRecognitionUsageDescription": "Ứng dụng sử dụng dịch vụ nhận diện giọng nói để giao tiếp với EVE AI Assistant."
+        "NSSpeechRecognitionUsageDescription": "Ứng dụng sử dụng dịch vụ nhận diện giọng nói để giao tiếp với EVE AI Assistant.",
+        "NSCameraUsageDescription": "Ứng dụng cần sử dụng Camera để nhận diện khuôn mặt và hướng nhìn (Gaze Detection) của bạn."
       }
     },
     "notification": {
@@ -35,6 +36,7 @@
       "package": "com.eve.voiceai",
       "permissions": [
         "RECORD_AUDIO",
+        "CAMERA",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "POST_NOTIFICATIONS",

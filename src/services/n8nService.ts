@@ -1,4 +1,5 @@
 import { ChatWebhookRequest, ChatWebhookResponse, DeviceRegisterRequest } from '../types/api';
+import { PersonProfile } from '../types/personProfile';
 import { Platform } from 'react-native';
 
 const N8N_WEBHOOK_URL =
@@ -13,11 +14,12 @@ const DEFAULT_USER_ID = process.env.EXPO_PUBLIC_USER_ID || 'user_default_01';
 
 export const n8nService = {
   /**
-   * Gửi dữ liệu Văn Bản (message) tinh gọn tới n8n Webhook
+   * Gửi dữ liệu Văn Bản (message) đính kèm current_person tới n8n Webhook
    */
   async sendChatMessage(
     message: string,
-    sessionId?: string
+    sessionId?: string,
+    currentPerson?: PersonProfile | null
   ): Promise<ChatWebhookResponse> {
     const payload: ChatWebhookRequest = {
       user_id: DEFAULT_USER_ID,
@@ -25,6 +27,16 @@ export const n8nService = {
       message,
       timestamp: Math.floor(Date.now() / 1000),
       client_locale: 'vi-VN',
+      current_person: currentPerson
+        ? {
+            id: currentPerson.id,
+            name: currentPerson.name,
+            age: currentPerson.age,
+            gender: currentPerson.gender,
+            preferred_pronoun: currentPerson.preferred_pronoun,
+            role: currentPerson.role,
+          }
+        : undefined,
     };
 
     console.log('[n8nService] Sending clean TEXT payload to n8n Webhook:', payload);

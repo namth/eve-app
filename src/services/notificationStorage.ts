@@ -1,4 +1,5 @@
 import { PushNotificationPayload } from '../types/api';
+import { PersonProfile } from '../types/personProfile';
 
 const QUEUE_STORAGE_KEY = '@eve_pending_notification_queue';
 
@@ -88,9 +89,12 @@ export const notificationStorage = {
   },
 
   /**
-   * Tạo câu nói tự nhiên (Có mở đầu ngẫu nhiên, đếm số lượng, liệt kê Một là/Hai là, và câu kết thúc)
+   * Tạo câu nói tự nhiên cá nhân hóa theo Tên & Danh xưng của Admin
    */
-  formatNaturalSpeech(notifications: PushNotificationPayload[]): {
+  formatNaturalSpeech(
+    notifications: PushNotificationPayload[],
+    person?: PersonProfile | null
+  ): {
     speechText: string;
     displayTitle: string;
     targetEmotion: any;
@@ -103,28 +107,33 @@ export const notificationStorage = {
       };
     }
 
+    const pronoun = person?.preferred_pronoun || 'Anh';
+    const name = person?.name ? ` ${person.name}` : '';
+    const honorific = `${pronoun}${name}`;
+    const honorificLower = pronoun.toLowerCase();
+
     const n = notifications.length;
     const targetEmotion = notifications[notifications.length - 1].emotion || 'happy';
 
-    // Danh sách câu mở đầu
+    // Danh sách câu mở đầu cá nhân hóa
     const singleOpenings = [
-      'Anh ơi, em vừa nhận được 1 thông báo từ hệ thống là:',
-      'Em xin phép báo cáo đến anh 1 thông báo em mới nhận được:',
-      'Dạ anh ơi, có 1 thông báo mới gửi đến anh:',
+      `${honorific} ơi, em vừa nhận được 1 thông báo từ hệ thống là:`,
+      `Em xin phép báo cáo đến ${honorificLower} 1 thông báo em mới nhận được:`,
+      `Dạ ${honorificLower} ơi, có 1 thông báo mới gửi đến ${honorificLower}:`,
     ];
 
     const multiOpenings = [
-      `Anh ơi, có ${n} thông báo được gửi đến anh hôm nay.`,
-      `Em xin phép báo cáo đến anh ${n} thông báo em mới nhận được:`,
-      `Dạ anh ơi, em vừa nhận được ${n} thông báo mới từ hệ thống nè:`,
+      `${honorific} ơi, có ${n} thông báo được gửi đến ${honorificLower} hôm nay.`,
+      `Em xin phép báo cáo đến ${honorificLower} ${n} thông báo em mới nhận được:`,
+      `Dạ ${honorificLower} ơi, em vừa nhận được ${n} thông báo mới từ hệ thống nè:`,
     ];
 
     // Danh sách câu kết thúc
     const closings = [
       'Hết ạ.',
-      'Anh có chỉ thị gì không ạ?',
+      `${honorific} có chỉ thị gì không ạ?`,
       'Dạ thế thôi ạ.',
-      'Em xin hết ạ, chúc anh một ngày làm việc hiệu quả!',
+      `Em xin hết ạ, chúc ${honorificLower} một ngày làm việc hiệu quả!`,
     ];
 
     const numberWords = [

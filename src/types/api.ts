@@ -1,3 +1,5 @@
+import { PersonProfile } from './personProfile';
+
 export type EVEExpression = 'idle' | 'happy' | 'smile' | 'sad' | 'thinking' | 'speaking' | 'sleeping' | 'wakeup';
 
 export interface ChatWebhookRequest {
@@ -7,6 +9,14 @@ export interface ChatWebhookRequest {
   audio_base64?: string;
   timestamp: number;
   client_locale: string;
+  current_person?: {
+    id: string;
+    name: string;
+    age?: number;
+    gender: string;
+    preferred_pronoun: string;
+    role: string;
+  };
 }
 
 export interface ChatWebhookResponse {
@@ -18,6 +28,13 @@ export interface ChatWebhookResponse {
   require_confirm?: boolean;
   pending_action?: string;
   suggested_answers?: string[];
+  update_person?: {
+    name?: string;
+    age?: number;
+    gender?: 'male' | 'female' | 'unknown';
+    preferred_pronoun?: string;
+    role?: 'admin' | 'friend';
+  };
 }
 
 export interface DeviceRegisterRequest {
