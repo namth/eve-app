@@ -2,4 +2,3 @@ node_modules
 .env
 *.json.key
 google-service-account.json
-google-services.json
