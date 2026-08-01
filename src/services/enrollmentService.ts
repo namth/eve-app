@@ -16,7 +16,8 @@ export const enrollmentService = {
     transcript: string,
     predictedGender: 'male' | 'female' | 'unknown',
     faceVector?: number[],
-    voiceVector?: number[]
+    voiceVector?: number[],
+    avatarBase64?: string | null
   ): Promise<{ person: PersonProfile; replyText: string; audioUrl?: string }> {
     console.log('[enrollmentService] Sending enrollment request to n8n:', transcript);
 
@@ -76,6 +77,7 @@ export const enrollmentService = {
       gender: isFemale ? 'female' : 'male',
       preferred_pronoun: pronoun,
       role: 'friend',
+      avatar_base64: avatarBase64 || undefined,
       face_embedding: faceVector || this.generateDummyEmbedding(1),
       voice_embedding: voiceVector,
       created_at: Date.now(),

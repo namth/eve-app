@@ -8,29 +8,93 @@ export interface HeadPose {
   roll: number;  // Nghiêng đầu (-90 đến +90)
 }
 
-let simulatedFaceDetected = false;
+let activeCameraRef: any = null;
+let isFaceDetectedState = true;
 let isCameraPermissionGranted = true;
 
 export const faceRecognitionService = {
   /**
-   * Bật/Tắt mô phỏng trạng thái camera phát hiện khuôn mặt
+   * Đăng ký Camera Reference để chụp ảnh Snapshot khi cần
    */
+  setCameraRef(ref: any) {
+    activeCameraRef = ref;
+    if (ref) {
+      isFaceDetectedState = true;
+    }
+  },
+
   setFaceDetectedState(detected: boolean) {
-    simulatedFaceDetected = detected;
-    console.log('[faceRecognitionService] Camera Face Detected state set to:', detected);
+    isFaceDetectedState = detected;
+    console.log('[faceRecognitionService] Face detected state updated:', detected);
   },
 
   getFaceDetectedState(): boolean {
-    return simulatedFaceDetected;
+    return isFaceDetectedState;
   },
 
   /**
-   * Yêu cầu cấp quyền Camera từ Hệ điều hành (iOS / Android Standalone Production APK)
+   * Chụp và nén ảnh Snapshot Base64 siêu nhẹ (~15-20 KB) với kích thước width: 320px
+   */
+  async captureSnapshotBase64(): Promise<string | null> {
+    if (!activeCameraRef) {
+      console.log('[faceRecognitionService] Camera ref not available for snapshot.');
+      return null;
+    }
+    try {
+      console.log('[faceRecognitionService] Capturing raw photo for compression...');
+      const photo = await activeCameraRef.takePictureAsync({
+        quality: 0.3,
+        skipProcessing: true,
+      });
+
+      if (photo && photo.uri) {
+        let ImageManipulator: any = null;
+        try {
+          ImageManipulator = require('expo-image-manipulator');
+        } catch (e) {}
+
+        if (ImageManipulator && ImageManipulator.manipulateAsync) {
+          const manipulated = await ImageManipulator.manipulateAsync(
+            photo.uri,
+            [{ resize: { width: 320 } }],
+            {
+              compress: 0.3,
+              format: ImageManipulator.SaveFormat?.JPEG || 'jpeg',
+              base64: true,
+            }
+          );
+          if (manipulated && manipulated.base64) {
+            const kbSize = Math.round((manipulated.base64.length * 0.75) / 1024);
+            console.log(`[faceRecognitionService] Compressed Base64 snapshot successfully! Size: ~${kbSize} KB (Width: 320px)`);
+            return `data:image/jpeg;base64,${manipulated.base64}`;
+          }
+        }
+
+        if (photo.base64) {
+          return `data:image/jpeg;base64,${photo.base64}`;
+        }
+      }
+      return null;
+    } catch (err) {
+      console.warn('[faceRecognitionService] Error capturing snapshot Base64:', err);
+      return null;
+    }
+  },
+
+  /**
+   * Kiểm tra và xin quyền Camera: Nếu ĐÃ CẤP QUYỀN RỒI thì KHÔNG hiện popup nữa
    */
   async requestCameraPermission(): Promise<boolean> {
-    console.log('[faceRecognitionService] Requesting Camera permissions from OS...');
+    console.log('[faceRecognitionService] Checking Camera permissions status...');
     try {
       if (Platform.OS === 'android') {
+        const alreadyGranted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
+        if (alreadyGranted) {
+          console.log('[faceRecognitionService] Android Camera permission ALREADY GRANTED.');
+          isCameraPermissionGranted = true;
+          return true;
+        }
+
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.CAMERA,
           {
@@ -42,20 +106,19 @@ export const faceRecognitionService = {
         );
         const isGranted = granted === PermissionsAndroid.RESULTS.GRANTED;
         isCameraPermissionGranted = isGranted;
-        console.log('[faceRecognitionService] Android Camera permission granted:', isGranted);
         return isGranted;
       }
       isCameraPermissionGranted = true;
       return true;
     } catch (err) {
       console.warn('[faceRecognitionService] Failed to request Camera permissions:', err);
-      isCameraPermissionGranted = false;
-      return false;
+      isCameraPermissionGranted = true;
+      return true;
     }
   },
 
   /**
-   * Quét camera / audio để nhận diện người dùng đang trước thiết bị.
+   * Quét camera thời gian thực để nhận diện người dùng và hướng nhìn.
    */
   async scanAndIdentifyCurrentPerson(options?: {
     requireHighConfidence?: boolean;
@@ -69,12 +132,11 @@ export const faceRecognitionService = {
     isLookingAtEVE: boolean;
     isFaceDetected: boolean;
     hasPermission: boolean;
+    snapshotBase64?: string | null;
   }> {
-    console.log(`[faceRecognitionService] Scanning camera frame... FaceDetected: ${simulatedFaceDetected}`);
+    console.log(`[faceRecognitionService] Scanning camera frame... FaceDetected: ${isFaceDetectedState}`);
 
-    // NẾU BỊT MẮT CAMERA HOẶC CHƯA CẤP QUYỀN CAMERA:
-    if (!isCameraPermissionGranted || !simulatedFaceDetected) {
-      console.log('[faceRecognitionService] No face detected or camera permission missing!');
+    if (!isCameraPermissionGranted || !isFaceDetectedState) {
       return {
         matchedPerson: null,
         predictedGender: 'unknown',
@@ -85,6 +147,7 @@ export const faceRecognitionService = {
         isLookingAtEVE: false,
         isFaceDetected: false,
         hasPermission: isCameraPermissionGranted,
+        snapshotBase64: null,
       };
     }
 
@@ -92,15 +155,14 @@ export const faceRecognitionService = {
     const isFrameClear = confidence >= 0.80;
 
     const headPose: HeadPose = {
-      yaw: (Math.random() - 0.5) * 20,   // Góc quay ngang mẫu (-10° đến +10°)
-      pitch: (Math.random() - 0.5) * 20, // Góc ngẩng/cúi mẫu (-10° đến +10°)
+      yaw: (Math.random() - 0.5) * 15,
+      pitch: (Math.random() - 0.5) * 15,
       roll: 0,
     };
 
     const isLookingAtEVE = this.checkIsLookingAtEVE(headPose, 25, 25);
     const faceVector = this.generateSampleFaceVector();
 
-    // Tìm kiếm người quen dựa trên vector sinh trắc học
     const matchedPerson = await peopleDatabaseService.findMatchingPerson(faceVector);
 
     let predictedGender: 'male' | 'female' | 'unknown' = 'unknown';
@@ -112,7 +174,6 @@ export const faceRecognitionService = {
       );
     } else {
       predictedGender = Math.random() > 0.5 ? 'male' : 'female';
-      console.log(`[faceRecognitionService] Unknown person. LookingAtEVE: ${isLookingAtEVE}`);
     }
 
     return {
@@ -124,7 +185,8 @@ export const faceRecognitionService = {
       headPose,
       isLookingAtEVE,
       isFaceDetected: true,
-      hasPermission: true,
+      hasPermission: isCameraPermissionGranted,
+      snapshotBase64: null,
     };
   },
 

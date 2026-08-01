@@ -6,6 +6,7 @@ class AudioService {
   private soundObject: Audio.Sound | null = null;
   private recordingObject: Audio.Recording | null = null;
   private isPlayingTTSStatus: boolean = false;
+  private speechDetectedFlag: boolean = false;
 
   constructor() {
     Audio.setAudioModeAsync({
@@ -18,6 +19,10 @@ class AudioService {
 
   public get isPlayingTTS(): boolean {
     return this.isPlayingTTSStatus;
+  }
+
+  public get wasSpeechDetected(): boolean {
+    return this.speechDetectedFlag;
   }
 
   /**
@@ -154,6 +159,7 @@ class AudioService {
       );
 
       this.recordingObject = recording;
+      this.speechDetectedFlag = false;
 
       const silenceThreshold = options?.silenceThresholdMs || 800; // 800ms
       let hasStartedSpeaking = false;
@@ -165,28 +171,29 @@ class AudioService {
 
         const metering = status.metering ?? -160; // dB value
 
-        // 1. CẮT NGANG THÔNG MINH (Smart Barge-In): Chỉ kích hoạt khi ĐỒNG THỜI có tiếng nói (> -30dB) VÀ Đang nhìn vào EVE
-        if (this.isPlayingTTSStatus && metering > -30) {
+        // 1. CẮT NGANG THÔNG MINH (Smart Barge-In): Chỉ kích hoạt khi ĐỒNG THỜI có tiếng nói (> -32dB) VÀ Đang nhìn vào EVE
+        if (this.isPlayingTTSStatus && metering > -32) {
           const isLooking = options?.checkIsLookingAtEVE ? options.checkIsLookingAtEVE() : true;
           if (isLooking) {
-            console.log('[AudioService] Smart Barge-in triggered! (Volume > -30dB AND Looking at EVE). Halting TTS...');
+            console.log('[AudioService] Smart Barge-in triggered! (Volume > -32dB AND Looking at EVE). Halting TTS...');
             this.stopAudio();
             if (options?.onBargeIn) options.onBargeIn();
             return;
           } else {
-            console.log('[AudioService] Noise > -30dB detected during TTS, but user is NOT looking at EVE. Ignoring Barge-in.');
+            console.log('[AudioService] Noise > -32dB detected during TTS, but user is NOT looking at EVE. Ignoring Barge-in.');
           }
         }
 
-        // 2. VAD: Phát hiện bắt đầu nói
-        if (metering > -35) {
+        // 2. VAD: Phát hiện bắt đầu nói khi âm lượng vượt ngưỡng -32 dB (Nhạy mượt cho giọng nói nhỏ/vừa)
+        if (metering > -32) {
           if (!hasStartedSpeaking) {
             console.log('[AudioService] VAD: Speech started (Metering:', metering, 'dB)');
             hasStartedSpeaking = true;
+            this.speechDetectedFlag = true;
           }
           silenceStartTime = null; // Reset bộ đếm im lặng
-        } else if (hasStartedSpeaking && metering < -40) {
-          // 3. VAD: Tính toán khoảng thời gian im lặng sau khi đã nói
+        } else if (hasStartedSpeaking && metering < -42) {
+          // 3. VAD: Tính toán khoảng thời gian im lặng sau khi đã có tiếng nói thực sự
           if (!silenceStartTime) {
             silenceStartTime = Date.now();
           } else {

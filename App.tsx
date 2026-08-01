@@ -28,18 +28,31 @@ import { notificationStorage } from './src/services/notificationStorage';
 import { peopleDatabaseService } from './src/services/peopleDatabaseService';
 import { enrollmentService } from './src/services/enrollmentService';
 import { faceRecognitionService } from './src/services/faceRecognitionService';
+import welcomeGreetings from './src/assets/data/welcome_greetings.json';
 import { ChatWebhookResponse, PushNotificationPayload } from './src/types/api';
 import { PersonProfile } from './src/types/personProfile';
 
+const getRandomWelcomeGreeting = (): string => {
+  if (Array.isArray(welcomeGreetings) && welcomeGreetings.length > 0) {
+    const idx = Math.floor(Math.random() * welcomeGreetings.length);
+    return welcomeGreetings[idx];
+  }
+  return 'Xin chào, tôi là Eve, trợ lý của công ty INOVA. Tôi có thể giúp gì cho bạn hôm nay?';
+};
+
 export default function App() {
-  const { expression, setExpression, handleCanvasTap, isWakingUp } = useEVEState();
+  const [isRecording, setIsRecording] = useState(false);
+  const isRecordingRef = useRef(false);
+  isRecordingRef.current = isRecording;
+
+  const isFidgetBlocked = useCallback(() => isRecordingRef.current, []);
+  const { expression, setExpression, handleCanvasTap, isWakingUp } = useEVEState(isFidgetBlocked);
 
   const [inputMessage, setInputMessage] = useState('');
   const [lastReplyText, setLastReplyText] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | undefined>();
   const [pendingConfirm, setPendingConfirm] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [showControlUI, setShowControlUI] = useState<boolean>(false);
   const [activeNotificationQueue, setActiveNotificationQueue] = useState<PushNotificationPayload[]>([]);
 
@@ -166,78 +179,12 @@ export default function App() {
   );
 
   // Guard against React 18 Strict Mode double scan on mount
+  // Guard against React 18 Strict Mode double scan on mount
   const hasScannedRef = useRef(false);
+  // Ref lưu ID người đã được EVE chào mừng thành công (Tránh lặp lại câu chào)
+  const greetedPersonIdRef = useRef<string | null>(null);
 
-  /**
-   * Chạy quy trình Nhận diện Khuôn mặt / Giọng nói (Scan & Identify) với bộ đệm ổn định 1.5s
-   */
-  const runScanAndIdentify = useCallback(async () => {
-    console.log('[App] Running Scan and Identify with Stable Face Verification...');
-    try {
-      // Tích lũy bộ đệm rõ nét 1.5s (Confidence >= 80% & Có khuôn mặt thật)
-      const { matchedPerson, predictedGender, faceVector, isValid, isFaceDetected } =
-        await faceRecognitionService.verifyStableFaceFrame(1500);
 
-      if (!isValid || !isFaceDetected) {
-        console.log('[App] No face detected or frame blurry. Keeping EVE in Idle state without greeting...');
-        setExpression('idle');
-        return;
-      }
-
-      if (matchedPerson) {
-        // Đã nhận diện được người quen trong CSDL
-        setCurrentPerson(matchedPerson);
-        console.log(`[App] Welcome back ${matchedPerson.name} (${matchedPerson.role})`);
-
-        // Kiểm tra xem Admin có thông báo chưa đọc trong hàng đợi không để tránh phát tiếng chào 2 lần lặp nhau
-        const pendingQueue = await notificationStorage.getNotificationQueue();
-        const hasPendingNotif = matchedPerson.role === 'admin' && pendingQueue && pendingQueue.length > 0;
-
-        if (hasPendingNotif) {
-          // Nếu có thông báo, processNotificationQueue sẽ phát câu mở đầu xưng hô kèm báo cáo (Tránh chào 2 lần lặp nhau)
-          console.log('[App] Admin has pending notifications. Reading notification speech directly...');
-          await processNotificationQueue(undefined, matchedPerson);
-        } else {
-          // Nếu không có thông báo, EVE phát câu chào mừng
-          const hasName = matchedPerson.name && matchedPerson.name.trim().length > 0;
-          const pronoun = matchedPerson.preferred_pronoun || 'Anh';
-          const pronounLower = pronoun.toLowerCase();
-
-          const welcomeSpeech = hasName
-            ? `Em chào ${pronoun} ${matchedPerson.name}!`
-            : `Em chào ${pronounLower}! Lần trước em chưa biết tên của ${pronounLower}, lần này cho em biết tên của ${pronounLower} nhé ạ?`;
-
-          setLastReplyText(welcomeSpeech);
-          setExpression('happy');
-
-          await audioService.playTTS(welcomeSpeech, undefined, () => {
-            setExpression('idle');
-          });
-        }
-      } else {
-        // Chưa có dữ liệu (Người lạ) -> Bắt đầu luồng hỏi & đăng ký người mới lễ phép
-        console.log('[App] Unknown person detected clearly. Starting enrollment workflow...');
-        setIsEnrolling(true);
-        setEnrollPredictedGender(predictedGender);
-        setEnrollFaceVector(faceVector);
-
-        const isMale = predictedGender === 'male';
-        const pronoun = isMale ? 'anh' : 'chị';
-
-        const greetingQuestion = `Em chào ${pronoun}! Em là EVE, em chưa biết tên của ${pronoun}. ${pronoun.charAt(0).toUpperCase() + pronoun.slice(1)} tên là gì ạ?`;
-        setLastReplyText(greetingQuestion);
-        setExpression('speaking');
-
-        await audioService.playTTS(greetingQuestion, undefined, () => {
-          setExpression('idle');
-          // Tự động bật micro thu âm câu trả lời tên tuổi của người dùng
-          handleMicToggle();
-        });
-      }
-    } catch (err) {
-      console.warn('[App] Error in scan and identify:', err);
-    }
-  }, [processNotificationQueue, setExpression]);
 
   /**
    * Lắng nghe khi có 1 Push Notification mới đến
@@ -252,15 +199,9 @@ export default function App() {
   );
 
   /**
-   * Kiểm tra và tự động phát thông báo chưa đọc từ đĩa cứng khi vừa vào App (Chỉ khi camera thấy người)
+   * Kiểm tra và tự động phát thông báo chưa đọc từ đĩa cứng khi vừa vào App
    */
   const checkAndPlayPendingNotification = useCallback(async () => {
-    const isFaceDetected = faceRecognitionService.getFaceDetectedState();
-    if (!isFaceDetected) {
-      console.log('[App] Camera has not detected any face. Holding pending notifications...');
-      return;
-    }
-
     const queue = await notificationStorage.getNotificationQueue();
     if (queue && queue.length > 0) {
       console.log('[App] Found pending notification queue in storage, count:', queue.length);
@@ -272,6 +213,8 @@ export default function App() {
       }
     }
   }, [processNotificationQueue]);
+
+
 
   /**
    * Khởi tạo App: Đăng ký Push Token, Lắng nghe thông báo & Chạy Nhận diện Ban đầu
@@ -301,15 +244,23 @@ export default function App() {
       }
     );
 
-    // 3. Khởi chạy nhận diện người dùng On-device
-    runScanAndIdentify().then(() => {
-      notificationService.getInitialNotification().then((initialPayload) => {
-        if (initialPayload) {
-          notificationStorage.addNotificationToQueue(initialPayload).then((updatedQueue) => {
-            processNotificationQueue(updatedQueue);
-          });
-        } else {
-          checkAndPlayPendingNotification();
+    // 3. Khởi tạo App: Luôn bắt đầu ở chế độ Guest (Chưa xác định danh tính)
+    peopleDatabaseService.getPeopleList().then(async () => {
+      // Mới vào app -> chưa xác định là ai (Guest Mode)
+      setCurrentPerson(null);
+      await peopleDatabaseService.saveCurrentUser(null);
+
+      // Luồng Welcome: Phát 1 câu chào ngẫu nhiên giới thiệu Eve & INOVA ở dạng Guest
+      const greetingText = getRandomWelcomeGreeting();
+      console.log('[App] Welcome Flow (Guest Mode): Playing random greeting:', greetingText);
+      setLastReplyText(greetingText);
+      setExpression('speaking');
+
+      await audioService.playTTS(greetingText, undefined, () => {
+        setExpression('idle');
+        if (isHandsFreeModeRef.current) {
+          console.log('[App] Welcome greeting completed! Starting Hands-Free VAD listening as Guest...');
+          startVADListening();
         }
       });
     });
@@ -318,7 +269,7 @@ export default function App() {
       foregroundSub.remove();
       backgroundSub.remove();
     };
-  }, [handleIncomingSpeech, processNotificationQueue, checkAndPlayPendingNotification, runScanAndIdentify]);
+  }, [handleIncomingSpeech, processNotificationQueue, checkAndPlayPendingNotification, startVADListening, setExpression]);
 
   /**
    * Gửi câu lệnh bằng văn bản lên n8n Webhook
@@ -332,7 +283,9 @@ export default function App() {
     setExpression('thinking');
 
     try {
-      // Gửi câu thoại đính kèm current_person profile metadata
+      console.log('[App] Sending Pure Voice Chat message to n8n Webhook with current_person metadata...');
+
+      // Gửi câu thoại đính kèm current_person metadata (image_base64: null)
       const response: ChatWebhookResponse = await n8nService.sendChatMessage(
         msgToSend,
         currentSessionId,
@@ -344,19 +297,25 @@ export default function App() {
       setCurrentSessionId(response.session_id);
       setPendingConfirm(!!response.require_confirm);
 
-      // TỰ ĐỘNG ĐÍNH CHÍNH PROFILE NẾU N8N TRẢ VỀ UPDATE_PERSON
-      if (response.update_person && currentPerson) {
-        const updatedProfile: PersonProfile = {
-          ...currentPerson,
-          name: response.update_person.name || currentPerson.name,
-          age: response.update_person.age !== undefined ? response.update_person.age : currentPerson.age,
-          gender: response.update_person.gender || currentPerson.gender,
-          preferred_pronoun: response.update_person.preferred_pronoun || currentPerson.preferred_pronoun,
-          role: response.update_person.role || currentPerson.role,
-        };
-        await peopleDatabaseService.savePersonProfile(updatedProfile);
-        setCurrentPerson(updatedProfile);
-        console.log('[App] Voice Profile Correction applied:', updatedProfile.name);
+      // TỰ ĐỘNG CẬP NHẬT / THÊM MỚI / ACTIVE NGƯỜI DÙNG TỪ N8N RESPONSE (KÈM DIFF CHECK)
+      const incomingPerson = response.person || response.update_person;
+      if (incomingPerson && incomingPerson.name) {
+        const { person: syncedPerson, isUpdated } = await peopleDatabaseService.syncPersonFromResponse(
+          incomingPerson,
+          currentPerson
+        );
+        setCurrentPerson(syncedPerson);
+        if (isUpdated) {
+          console.log('[App] Profile synced & saved for:', syncedPerson.name, 'Role:', syncedPerson.role);
+        } else {
+          console.log('[App] Activated person profile for:', syncedPerson.name, 'Role:', syncedPerson.role);
+        }
+
+        // NẾU ROLE CỦA NGƯỜI VỪA ACTIVE LÀ ADMIN -> TIẾN HÀNH LUỒNG CŨ: ĐỌC NOTIFICATIONS (NẾU CÓ)
+        if (syncedPerson.role === 'admin') {
+          console.log('[App] Active person is ADMIN! Checking pending notifications...');
+          processNotificationQueue(undefined, syncedPerson);
+        }
       }
 
       const targetEmotion = response.emotion || 'happy';
@@ -398,6 +357,16 @@ export default function App() {
     setIsRecording(false);
     const audioUri = await audioService.stopRecording();
     console.log('[App] Recorded audio URI:', audioUri);
+
+    if (!audioService.wasSpeechDetected) {
+      console.log('[App] No speech detected above -26dB threshold. Skipping STT request.');
+      setExpression('idle');
+      if (isHandsFreeModeRef.current) {
+        console.log('[App] Auto Re-Listen Loop restarted after silent VAD auto-stop.');
+        startVADListening();
+      }
+      return;
+    }
 
     if (audioUri) {
       handleSendAudio(audioUri);
@@ -447,49 +416,7 @@ export default function App() {
         return;
       }
 
-      // LUỒNG CHAT N8N THÔNG THƯỜNG - PRE-SEND BIOMETRICS & GAZE RE-VERIFICATION
-      const biometricsCheck = await faceRecognitionService.scanAndIdentifyCurrentPerson();
-
-      // BỘ LỌC HƯỚNG NHÌN GAZE DETECTION: Bỏ qua âm thanh nếu người dùng quay mặt đi nơi khác nói chuyện với người xung quanh
-      if (!biometricsCheck.isLookingAtEVE) {
-        console.log('[App] Gaze Detection: User is looking away (Head Pose Yaw/Pitch > 25°). Discarding audio.');
-        setExpression('idle');
-        setIsProcessing(false);
-        if (isHandsFreeModeRef.current) {
-          startVADListening();
-        }
-        return;
-      }
-
-      if (biometricsCheck.matchedPerson) {
-        if (biometricsCheck.matchedPerson.id !== currentPersonRef.current?.id) {
-          console.log(
-            `[App] Speaker switch detected! Changing active person to: ${biometricsCheck.matchedPerson.name} (${biometricsCheck.matchedPerson.role})`
-          );
-          setCurrentPerson(biometricsCheck.matchedPerson);
-        }
-      } else {
-        // Người lạ đột ngột cất tiếng nói -> Chuyển ngay sang luồng Đăng ký người mới
-        console.log('[App] Unknown speaker detected mid-conversation! Switching to enrollment workflow...');
-        setIsEnrolling(true);
-        setEnrollPredictedGender(biometricsCheck.predictedGender);
-        setEnrollFaceVector(biometricsCheck.faceVector);
-
-        const isMale = biometricsCheck.predictedGender === 'male';
-        const pronoun = isMale ? 'anh' : 'chị';
-
-        const greetingQuestion = `Em chào ${pronoun}! Em chưa biết tên của ${pronoun}. ${pronoun.charAt(0).toUpperCase() + pronoun.slice(1)} tên là gì ạ?`;
-        setLastReplyText(greetingQuestion);
-        setExpression('speaking');
-
-        await audioService.playTTS(greetingQuestion, undefined, () => {
-          setExpression('idle');
-          handleMicToggle();
-        });
-        setIsProcessing(false);
-        return;
-      }
-
+      // LUỒNG VOICE CHAT PURE N8N: Gửi văn bản STT trực tiếp lên n8n Webhook
       await handleSendMessage(transcribedText);
     } catch (error: any) {
       console.error('[App] Error processing STT audio:', error);
@@ -497,6 +424,24 @@ export default function App() {
       setLastReplyText(`Lỗi STT: ${errMsg}`);
       setExpression('idle');
       setIsProcessing(false);
+    }
+  };
+
+  /**
+   * Bật / Tạm dừng chế độ VAD đàm thoại tự động (Hands-Free)
+   */
+  const handleTogglePauseVAD = () => {
+    if (isHandsFreeMode) {
+      console.log('[App] User manually PAUSED Hands-Free VAD listening.');
+      setIsHandsFreeMode(false);
+      if (isRecording) {
+        audioService.stopRecording();
+        setIsRecording(false);
+      }
+    } else {
+      console.log('[App] User manually RESUMED Hands-Free VAD listening.');
+      setIsHandsFreeMode(true);
+      startVADListening();
     }
   };
 
@@ -510,15 +455,6 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#030712" />
-
-        {/* Floating Control Panel & Open Profile Settings */}
-        {showControlUI && (
-          <ControlPanel
-            currentExpression={expression}
-            onSelectExpression={(exp) => setExpression(exp)}
-            onOpenSettings={() => setShowProfileModal(true)}
-          />
-        )}
 
         {/* Header Bar */}
         <View style={styles.header}>
@@ -559,18 +495,17 @@ export default function App() {
         </View>
 
         {/* Top Status Badge */}
+        <View style={styles.topStatusContainer}>
+          <StatusBadge expression={expression} isListening={isRecording} />
+        </View>
+
+        {/* Floating Control Panel */}
         {showControlUI && (
-          <>
-            <View style={styles.topStatusContainer}>
-              <StatusBadge expression={expression} isListening={isRecording} />
-            </View>
-            <ControlPanel
-              currentExpression={expression}
-              onSelectExpression={setExpression}
-              onOpenSettings={() => setShowSettings(true)}
-              onTriggerScan={runScanAndIdentify}
-            />
-          </>
+          <ControlPanel
+            currentExpression={expression}
+            onSelectExpression={setExpression}
+            onOpenSettings={() => setShowSettings(true)}
+          />
         )}
 
         <ScrollView
@@ -695,17 +630,34 @@ export default function App() {
             </TouchableOpacity>
           </View>
 
-          {/* Microphone 1-Tap Button */}
-          <TouchableOpacity
-            style={[styles.micBtn, isRecording && styles.micBtnRecording]}
-            onPress={handleMicToggle}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.micIcon}>{isRecording ? '🔴' : '🎤'}</Text>
-            <Text style={styles.micLabel}>
-              {isRecording ? 'Đang nghe... (Chạm để gửi)' : 'Chạm để nói với EVE'}
-            </Text>
-          </TouchableOpacity>
+          {/* Microphone Row */}
+          <View style={styles.micRowContainer}>
+            {/* Nút Tạm dừng VAD nhỏ nhắn ở phía bên trái (Chỉ hiện khi đang lắng nghe) */}
+            {isRecording && (
+              <TouchableOpacity
+                style={styles.smallStopBtn}
+                onPress={handleTogglePauseVAD}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.smallStopIcon}>⏹️ Dừng VAD</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[
+                styles.micBtn,
+                isRecording && styles.micBtnRecording,
+                isRecording && { flex: 1 },
+              ]}
+              onPress={handleMicToggle}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.micIcon}>{isRecording ? '🔴' : '🎤'}</Text>
+              <Text style={styles.micLabel}>
+                {isRecording ? 'Đang nghe... (Chạm để gửi)' : 'Chạm để nói với EVE'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </KeyboardAvoidingView>
 
         {/* Profile Settings Modal */}
@@ -719,7 +671,6 @@ export default function App() {
               processNotificationQueue(undefined, person);
             }
           }}
-          onTriggerScan={runScanAndIdentify}
         />
 
         {/* Modal Settings General */}
@@ -1013,7 +964,29 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  micRowContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  smallStopBtn: {
+    backgroundColor: 'rgba(244, 63, 94, 0.2)',
+    borderColor: '#f43f5e',
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  smallStopIcon: {
+    color: '#f43f5e',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
   micBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

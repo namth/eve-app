@@ -1,9 +1,70 @@
+import * as FileSystem from 'expo-file-system';
+import { Platform } from 'react-native';
 import { PushNotificationPayload } from '../types/api';
 import { PersonProfile } from '../types/personProfile';
 
 const QUEUE_STORAGE_KEY = '@eve_pending_notification_queue';
 
 let memoryQueue: PushNotificationPayload[] = [];
+
+// Storage helpers với Expo FileSystem cho Native + localStorage cho Web
+async function storageGetItem(key: string): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem(key);
+    }
+    return null;
+  }
+
+  try {
+    const filename = key.replace(/[^a-zA-Z0-9_-]/g, '_') + '.json';
+    const filePath = `${FileSystem.documentDirectory}${filename}`;
+    const info = await FileSystem.getInfoAsync(filePath);
+    if (info.exists) {
+      return await FileSystem.readAsStringAsync(filePath);
+    }
+  } catch (e) {
+    console.warn('[Storage] FileSystem.getItem error:', e);
+  }
+  return null;
+}
+
+async function storageSetItem(key: string, value: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, value);
+    }
+    return;
+  }
+
+  try {
+    const filename = key.replace(/[^a-zA-Z0-9_-]/g, '_') + '.json';
+    const filePath = `${FileSystem.documentDirectory}${filename}`;
+    await FileSystem.writeAsStringAsync(filePath, value);
+  } catch (e) {
+    console.warn('[Storage] FileSystem.setItem error:', e);
+  }
+}
+
+async function storageRemoveItem(key: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(key);
+    }
+    return;
+  }
+
+  try {
+    const filename = key.replace(/[^a-zA-Z0-9_-]/g, '_') + '.json';
+    const filePath = `${FileSystem.documentDirectory}${filename}`;
+    const info = await FileSystem.getInfoAsync(filePath);
+    if (info.exists) {
+      await FileSystem.deleteAsync(filePath, { idempotent: true });
+    }
+  } catch (e) {
+    console.warn('[Storage] FileSystem.removeItem error:', e);
+  }
+}
 
 export const notificationStorage = {
   /**
@@ -20,15 +81,8 @@ export const notificationStorage = {
         memoryQueue.push(payload);
       }
 
-      let AsyncStorage: any = null;
-      try {
-        AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      } catch (e) {}
-
-      if (AsyncStorage) {
-        await AsyncStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(memoryQueue));
-        console.log('[NotificationStorage] Queue updated in AsyncStorage. Total:', memoryQueue.length);
-      }
+      await storageSetItem(QUEUE_STORAGE_KEY, JSON.stringify(memoryQueue));
+      console.log('[NotificationStorage] Queue updated in storage. Total:', memoryQueue.length);
       return [...memoryQueue];
     } catch (err) {
       console.warn('[NotificationStorage] Error adding to queue:', err);
@@ -45,20 +99,13 @@ export const notificationStorage = {
         return [...memoryQueue];
       }
 
-      let AsyncStorage: any = null;
-      try {
-        AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      } catch (e) {}
-
-      if (AsyncStorage) {
-        const jsonVal = await AsyncStorage.getItem(QUEUE_STORAGE_KEY);
-        if (jsonVal) {
-          const list = JSON.parse(jsonVal) as PushNotificationPayload[];
-          if (Array.isArray(list)) {
-            memoryQueue = list;
-            console.log('[NotificationStorage] Retrieved queue from AsyncStorage. Total:', list.length);
-            return [...memoryQueue];
-          }
+      const jsonVal = await storageGetItem(QUEUE_STORAGE_KEY);
+      if (jsonVal) {
+        const list = JSON.parse(jsonVal) as PushNotificationPayload[];
+        if (Array.isArray(list)) {
+          memoryQueue = list;
+          console.log('[NotificationStorage] Retrieved queue from storage. Total:', list.length);
+          return [...memoryQueue];
         }
       }
       return [...memoryQueue];
@@ -74,15 +121,8 @@ export const notificationStorage = {
   async clearNotificationQueue(): Promise<void> {
     try {
       memoryQueue = [];
-      let AsyncStorage: any = null;
-      try {
-        AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      } catch (e) {}
-
-      if (AsyncStorage) {
-        await AsyncStorage.removeItem(QUEUE_STORAGE_KEY);
-        console.log('[NotificationStorage] Cleared notification queue from AsyncStorage');
-      }
+      await storageRemoveItem(QUEUE_STORAGE_KEY);
+      console.log('[NotificationStorage] Cleared notification queue from storage');
     } catch (err) {
       console.warn('[NotificationStorage] Error clearing queue:', err);
     }

@@ -1,26 +1,39 @@
 import { Platform } from 'react-native';
 
-// Danh sách các câu ảo giác (Hallucinations) phổ biến của Whisper trên file âm thanh im lặng
-const WHISPER_HALLUCINATION_PATTERNS = [
-  /ghiền mì gõ/i,
-  /subscribe/i,
-  /đăng ký kênh/i,
-  /theo dõi kênh/i,
-  /cảm ơn các bạn đã xem/i,
-  /cảm ơn các bạn đã theo dõi/i,
-  /hãy bấm Like/i,
-  /subcribe/i,
-  /chúc các bạn/i,
-  /hãy đăng ký/i,
-  /liên hệ quảng cáo/i,
-  /video hấp dẫn/i,
+// Các cụm từ rác/ảo giác của Whisper cần bóc tách khỏi văn bản (Sanitize)
+const HALLUCINATION_PHRASES = [
+  /hãy subscribe cho kênh [^.?!]+/gi,
+  /để không bỏ lỡ những video hấp dẫn/gi,
+  /cảm ơn các bạn đã (?:xem|theo dõi)[^.?!]*/gi,
+  /hãy (?:bấm|nhấn) (?:like|thích) (?:và|hoặc) đăng ký (?:kênh)?[^.?!]*/gi,
+  /liên hệ quảng cáo[^.?!]*/gi,
+  /chúc các bạn (?:vui vẻ|xem video)[^.?!]*/gi,
+  /ghiền mì gõ/gi,
+  /subscribe/gi,
+  /đăng ký kênh/gi,
+  /theo dõi kênh/gi,
 ];
+
+function sanitizeWhisperText(rawText: string): string | null {
+  if (!rawText) return null;
+  let cleaned = rawText;
+
+  for (const phrasePattern of HALLUCINATION_PHRASES) {
+    cleaned = cleaned.replace(phrasePattern, '');
+  }
+
+  // Làm sạch khoảng trắng thừa và dấu câu rác
+  cleaned = cleaned.replace(/^[\s,._\-:;?!]+/, '').replace(/\s+/g, ' ').trim();
+
+  if (!cleaned || cleaned.length < 2) return null;
+  return cleaned;
+}
 
 export const sttService = {
   /**
    * Chuyển đổi tệp âm thanh thu từ Microphone thành văn bản Tiếng Việt
    * Sử dụng Groq Whisper Large V3 Turbo LPU siêu tốc (~100ms)
-   * Tích hợp bộ lọc loại bỏ hiện tượng "Ảo Giác Im Lặng" (Silence Hallucinations)
+   * Tích hợp bộ lọc bóc tách loại bỏ hiện tượng "Ảo Giác Im Lặng" (Sanitize Whisper Hallucinations)
    */
   async transcribeAudio(audioUri: string): Promise<string | null> {
     const groqKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.EXPO_PUBLIC_OPENAI_API_KEY;
@@ -58,21 +71,23 @@ export const sttService = {
           const result = await response.json();
           const rawText = result.text ? result.text.trim() : '';
 
-          console.log(`[sttService] Groq Whisper SUCCESS in ${duration}ms! Transcribed text: "${rawText}"`);
+          console.log(`[sttService] Groq Whisper SUCCESS in ${duration}ms! Raw transcribed text: "${rawText}"`);
 
           if (!rawText) return null;
 
-          // 2. BỘ LỌC KHẮC PHỤC ẢO GIÁC FILE IM LẶNG CỦA WHISPER
-          const isHallucination = WHISPER_HALLUCINATION_PATTERNS.some((pattern) =>
-            pattern.test(rawText)
-          );
+          // 2. BÓC TÁCH & BĂM BỎ CÁC CỤM TỪ ẢO GIÁC RÁC CỦA WHISPER (GIỮ LẠI LỜI NÓI THẬT CỦA USER)
+          const sanitizedText = sanitizeWhisperText(rawText);
 
-          if (isHallucination) {
-            console.log(`[sttService] Filtered out Whisper Silence Hallucination: "${rawText}"`);
-            return null; // Coi như file im lặng, không gửi câu rác này lên server
+          if (!sanitizedText) {
+            console.log(`[sttService] Discarded pure Whisper silence hallucination: "${rawText}"`);
+            return null;
           }
 
-          return rawText;
+          if (sanitizedText !== rawText) {
+            console.log(`[sttService] Sanitized Whisper hallucination! Stripped noise. Clean text: "${sanitizedText}"`);
+          }
+
+          return sanitizedText;
         } else {
           const errText = await response.text();
           console.warn(`[sttService] Groq Whisper API returned HTTP ${response.status}:`, errText);

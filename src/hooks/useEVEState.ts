@@ -13,7 +13,7 @@ const getRandom = (min: number, max: number) =>
 const getRandomExpression = (): EVEExpression =>
   RANDOM_EXPRESSIONS[Math.floor(Math.random() * RANDOM_EXPRESSIONS.length)];
 
-export const useEVEState = () => {
+export const useEVEState = (isFidgetBlocked?: () => boolean) => {
   const [expression, setExpressionState] = useState<EVEExpression>('idle');
   const [isWakingUp, setIsWakingUp] = useState(false);
   const sleepTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -28,8 +28,8 @@ export const useEVEState = () => {
     const delay = getRandom(3000, 9000); // 3–9s trước khi fidget
     fidgetTimerRef.current = setTimeout(() => {
       setExpressionState((current) => {
-        if (current !== 'idle') {
-          // Nếu đang không idle thì bỏ qua, lên lịch lại
+        if (current !== 'idle' || (isFidgetBlocked && isFidgetBlocked())) {
+          // Nếu đang không idle hoặc bị khóa Fidget (ví dụ: đang thu âm VAD) thì bỏ qua, lên lịch lại
           scheduleNextFidget();
           return current;
         }
@@ -47,7 +47,7 @@ export const useEVEState = () => {
         return randomExp;
       });
     }, delay);
-  }, []);
+  }, [isFidgetBlocked]);
 
   /**
    * Dừng toàn bộ fidget timers

@@ -28,6 +28,13 @@ export interface ChatWebhookResponse {
   require_confirm?: boolean;
   pending_action?: string;
   suggested_answers?: string[];
+  person?: {
+    name?: string;
+    age?: number;
+    gender?: 'male' | 'female' | 'unknown';
+    preferred_pronoun?: string;
+    role?: 'admin' | 'friend';
+  };
   update_person?: {
     name?: string;
     age?: number;

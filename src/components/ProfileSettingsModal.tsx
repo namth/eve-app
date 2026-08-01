@@ -18,7 +18,7 @@ interface ProfileSettingsModalProps {
   onClose: () => void;
   currentPerson: PersonProfile | null;
   onSelectPerson: (person: PersonProfile) => void;
-  onTriggerScan: () => void;
+  onTriggerScan?: () => void;
 }
 
 export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
@@ -116,14 +116,27 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                 </Text>
               </View>
 
-              <TouchableOpacity style={styles.scanButton} onPress={() => { onClose(); onTriggerScan(); }}>
-                <Text style={styles.scanButtonText}>🔍 Quét lại</Text>
-              </TouchableOpacity>
+              {onTriggerScan && (
+                <TouchableOpacity style={styles.scanButton} onPress={() => { onClose(); onTriggerScan?.(); }}>
+                  <Text style={styles.scanButtonText}>🔍 Quét lại</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
-          {/* Editing Form or List */}
-          {editingPerson ? (
+          {/* Editing Form or List (ADMIN ONLY) */}
+          {currentPerson?.role !== 'admin' ? (
+            <View style={styles.restrictedContainer}>
+              <Text style={styles.restrictedIcon}>🔒</Text>
+              <Text style={styles.restrictedTitle}>GIỚI HẠN QUYỀN TRUY CẬP</Text>
+              <Text style={styles.restrictedText}>
+                Chỉ người dùng có quyền ADMIN mới được phép xem và quản lý Danh sách Người quen / Phân quyền hệ thống.
+              </Text>
+              <Text style={styles.restrictedSubText}>
+                Hiện tại bạn đang tương tác dưới dạng: {currentPerson ? `${currentPerson.name} (${currentPerson.role.toUpperCase()})` : 'Guest (Người lạ)'}.
+              </Text>
+            </View>
+          ) : editingPerson ? (
             <ScrollView style={styles.editForm}>
               <Text style={styles.sectionTitle}>Sửa Thông Tin: {editingPerson.name}</Text>
 
@@ -531,5 +544,40 @@ const styles = StyleSheet.create({
   saveBtnText: {
     color: '#000',
     fontWeight: 'bold',
+  },
+  restrictedContainer: {
+    flex: 1,
+    backgroundColor: '#1e293b55',
+    borderRadius: 12,
+    borderColor: '#334155',
+    borderWidth: 1,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  restrictedIcon: {
+    fontSize: 42,
+    marginBottom: 12,
+  },
+  restrictedTitle: {
+    color: '#f43f5e',
+    fontSize: 15,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  restrictedText: {
+    color: '#cbd5e1',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  restrictedSubText: {
+    color: '#64748b',
+    fontSize: 12,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });

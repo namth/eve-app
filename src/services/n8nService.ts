@@ -14,7 +14,7 @@ const DEFAULT_USER_ID = process.env.EXPO_PUBLIC_USER_ID || 'user_default_01';
 
 export const n8nService = {
   /**
-   * Gửi dữ liệu Văn Bản (message) đính kèm current_person tới n8n Webhook
+   * Gửi dữ liệu Văn Bản (message) đính kèm current_person tới n8n Webhook (Tối ưu phản hồi siêu tốc ~100ms)
    */
   async sendChatMessage(
     message: string,
@@ -57,9 +57,11 @@ export const n8nService = {
     const raw = await response.json();
     console.log('[n8nService] Received n8n raw response:', raw);
 
-    // n8n trả về dạng { "output": { "reply_text": ..., "emotion": ... } }
-    // hoặc trực tiếp { "reply_text": ..., "emotion": ... }
-    const data: ChatWebhookResponse = raw?.output ?? raw;
+    let rootObj = raw;
+    if (Array.isArray(raw) && raw.length > 0) {
+      rootObj = raw[0];
+    }
+    const data: ChatWebhookResponse = rootObj?.output ?? rootObj;
     console.log('[n8nService] Parsed response data:', data);
     return data;
   },

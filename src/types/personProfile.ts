@@ -7,6 +7,7 @@ export interface PersonProfile {
   gender: 'male' | 'female' | 'unknown';
   preferred_pronoun: string; // 'Anh' | 'Chị' | 'Chú' | 'Cô' | 'Bạn'
   role: UserRole;
+  avatar_base64?: string;
   face_embedding?: number[];
   voice_embedding?: number[];
   created_at: number;
