@@ -126,6 +126,8 @@ export default function App() {
   const persistLastUserRef = useRef<boolean>(false);
   persistLastUserRef.current = persistLastUser;
 
+  const hasInitializedRef = useRef<boolean>(false);
+
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Khóa chống trùng lặp đọc thông báo song song
@@ -364,7 +366,10 @@ export default function App() {
       }
     );
 
-    // 3. Khởi tạo App & Phục hồi Người dùng cuối nếu bật Cài đặt
+    // 3. Khởi tạo App & Phục hồi Người dùng cuối nếu bật Cài đặt (Chỉ chạy 1 lần duy nhất)
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+
     (async () => {
       await notificationService.getInitialNotification();
       await peopleDatabaseService.getPeopleList();
@@ -697,6 +702,12 @@ export default function App() {
               onPress={() => setShowProfileModal(true)}
             >
               <Text style={styles.settingsIcon}>👤</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.settingsBtn, { borderColor: '#00f0ff', backgroundColor: 'rgba(0, 240, 255, 0.2)' }]}
+              onPress={() => setShowAvatarSelector(true)}
+            >
+              <Text style={styles.settingsIcon}>{avatarMode === 'human' ? '👩' : '🤖'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.settingsBtn}
