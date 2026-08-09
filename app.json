@@ -50,8 +50,9 @@
       "favicon": "./assets/favicon.png"
     },
     "updates": {
+      "enabled": false,
       "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_ERROR_RECOVERY"
+      "checkAutomatically": "NEVER"
     },
     "plugins": [
       [
