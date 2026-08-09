@@ -42,6 +42,10 @@ export interface ChatWebhookResponse {
     preferred_pronoun?: string;
     role?: 'admin' | 'friend';
   };
+  pronunciation?: {
+    word: string;
+    speak: string;
+  };
 }
 
 export interface DeviceRegisterRequest {

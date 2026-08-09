@@ -12,12 +12,17 @@ import {
 } from 'react-native';
 import { PersonProfile, UserRole } from '../types/personProfile';
 import { peopleDatabaseService } from '../services/peopleDatabaseService';
+import {
+  pronunciationDictionaryService,
+  PronunciationItem,
+} from '../services/pronunciationDictionaryService';
 
 interface ProfileSettingsModalProps {
   visible: boolean;
   onClose: () => void;
   currentPerson: PersonProfile | null;
   onSelectPerson: (person: PersonProfile) => void;
+  onClearCurrentPerson?: () => void;
   onTriggerScan?: () => void;
 }
 
@@ -26,20 +31,61 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   onClose,
   currentPerson,
   onSelectPerson,
+  onClearCurrentPerson,
   onTriggerScan,
 }) => {
   const [people, setPeople] = useState<PersonProfile[]>([]);
   const [editingPerson, setEditingPerson] = useState<PersonProfile | null>(null);
+  const [activeTab, setActiveTab] = useState<'people' | 'pronunciation'>('people');
+  const [pronunciations, setPronunciations] = useState<PronunciationItem[]>([]);
+  const [newWord, setNewWord] = useState('');
+  const [newSpeak, setNewSpeak] = useState('');
 
   useEffect(() => {
     if (visible) {
       loadPeople();
+      loadPronunciations();
     }
   }, [visible]);
 
   const loadPeople = async () => {
     const list = await peopleDatabaseService.getPeopleList();
     setPeople(list);
+  };
+
+  const loadPronunciations = async () => {
+    const list = await pronunciationDictionaryService.getPronunciationList();
+    setPronunciations(list);
+  };
+
+  const handleAddPronunciation = async () => {
+    if (!newWord.trim() || !newSpeak.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập cả từ/website và cách đọc');
+      return;
+    }
+    try {
+      await pronunciationDictionaryService.savePronunciation(newWord, newSpeak);
+      setNewWord('');
+      setNewSpeak('');
+      loadPronunciations();
+      Alert.alert('Thành công', 'Đã thêm từ phát âm mới vào từ điển');
+    } catch (e: any) {
+      Alert.alert('Lỗi', e?.message || 'Không thể lưu từ phát âm');
+    }
+  };
+
+  const handleDeletePronunciation = async (word: string) => {
+    Alert.alert('Xác nhận xóa', `Bạn có muốn xóa từ phát âm '${word}'?`, [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Xóa',
+        style: 'destructive',
+        onPress: async () => {
+          await pronunciationDictionaryService.deletePronunciation(word);
+          loadPronunciations();
+        },
+      },
+    ]);
   };
 
   const handleSaveEdit = async () => {
@@ -116,15 +162,50 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                 </Text>
               </View>
 
-              {onTriggerScan && (
-                <TouchableOpacity style={styles.scanButton} onPress={() => { onClose(); onTriggerScan?.(); }}>
-                  <Text style={styles.scanButtonText}>🔍 Quét lại</Text>
-                </TouchableOpacity>
-              )}
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                {currentPerson && onClearCurrentPerson && (
+                  <TouchableOpacity
+                    style={styles.clearActiveBtn}
+                    onPress={() => {
+                      onClearCurrentPerson();
+                    }}
+                  >
+                    <Text style={styles.clearActiveBtnText}>Xóa nhận diện</Text>
+                  </TouchableOpacity>
+                )}
+
+                {onTriggerScan && (
+                  <TouchableOpacity style={styles.scanButton} onPress={() => { onClose(); onTriggerScan?.(); }}>
+                    <Text style={styles.scanButtonText}>🔍 Quét lại</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </View>
 
-          {/* Editing Form or List (ADMIN ONLY) */}
+          {/* Admin Tab Selector */}
+          {currentPerson?.role === 'admin' && !editingPerson && (
+            <View style={styles.tabBar}>
+              <TouchableOpacity
+                style={[styles.tabItem, activeTab === 'people' && styles.tabItemActive]}
+                onPress={() => setActiveTab('people')}
+              >
+                <Text style={[styles.tabText, activeTab === 'people' && styles.tabTextActive]}>
+                  👥 Người Quen ({people.length})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tabItem, activeTab === 'pronunciation' && styles.tabItemActive]}
+                onPress={() => setActiveTab('pronunciation')}
+              >
+                <Text style={[styles.tabText, activeTab === 'pronunciation' && styles.tabTextActive]}>
+                  🗣️ Từ Điển Dạy ({pronunciations.length})
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Editing Form or Tab List (ADMIN ONLY) */}
           {currentPerson?.role !== 'admin' ? (
             <View style={styles.restrictedContainer}>
               <Text style={styles.restrictedIcon}>🔒</Text>
@@ -219,7 +300,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          ) : (
+          ) : activeTab === 'people' ? (
             <View style={{ flex: 1 }}>
               <Text style={styles.sectionTitle}>Danh Sách Người Quen ({people.length})</Text>
               {people.length === 0 ? (
@@ -272,6 +353,60 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                           <Text style={{ color: '#ff4444', fontSize: 16 }}>🗑️</Text>
                         </TouchableOpacity>
                       </View>
+                    </View>
+                  )}
+                />
+              )}
+            </View>
+          ) : (
+            /* TAB 2: TỪ ĐIỂN PHÁT ÂM ĐÃ DẠY */
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>Thêm Từ/Website Phát Âm Mới</Text>
+              <View style={styles.addPronunciationBox}>
+                <TextInput
+                  style={styles.pronunciationInput}
+                  placeholder="Từ/Tên miền (vd: hoangskitchenhoian.com)..."
+                  placeholderTextColor="#64748b"
+                  value={newWord}
+                  onChangeText={setNewWord}
+                />
+                <TextInput
+                  style={styles.pronunciationInput}
+                  placeholder="Cách phát âm (vd: hoàng s kitchen hội an chấm com)..."
+                  placeholderTextColor="#64748b"
+                  value={newSpeak}
+                  onChangeText={setNewSpeak}
+                />
+                <TouchableOpacity style={styles.addPronunciationBtn} onPress={handleAddPronunciation}>
+                  <Text style={styles.addPronunciationBtnText}>+ Thêm Phát Âm</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.sectionTitle, { marginTop: 14 }]}>
+                Từ Điển Đã Học ({pronunciations.length})
+              </Text>
+              {pronunciations.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>Chưa có từ phát âm nào được lưu trên CSDL local.</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={pronunciations}
+                  keyExtractor={(item) => item.word}
+                  renderItem={({ item }) => (
+                    <View style={styles.personCard}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.personName}>{item.word}</Text>
+                        <Text style={[styles.personSub, { color: '#38bdf8', marginTop: 2 }]}>
+                          🗣️ {item.speak}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.actionIconButton}
+                        onPress={() => handleDeletePronunciation(item.word)}
+                      >
+                        <Text style={{ color: '#ff4444', fontSize: 16 }}>🗑️</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
                 />
@@ -381,6 +516,19 @@ const styles = StyleSheet.create({
   scanButtonText: {
     color: '#00f0ff',
     fontSize: 12,
+    fontWeight: 'bold',
+  },
+  clearActiveBtn: {
+    backgroundColor: '#f43f5e22',
+    borderColor: '#f43f5e',
+    borderWidth: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+  },
+  clearActiveBtnText: {
+    color: '#f43f5e',
+    fontSize: 11,
     fontWeight: 'bold',
   },
   sectionTitle: {
@@ -579,5 +727,61 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontStyle: 'italic',
     textAlign: 'center',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 14,
+  },
+  tabItem: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabItemActive: {
+    backgroundColor: '#00f0ff22',
+    borderColor: '#00f0ff',
+    borderWidth: 1,
+  },
+  tabText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  tabTextActive: {
+    color: '#00f0ff',
+  },
+  addPronunciationBox: {
+    backgroundColor: '#1e283a',
+    borderRadius: 12,
+    padding: 12,
+    borderColor: '#334155',
+    borderWidth: 1,
+    gap: 8,
+  },
+  pronunciationInput: {
+    backgroundColor: '#0f172a',
+    color: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderColor: '#334155',
+    borderWidth: 1,
+    fontSize: 13,
+  },
+  addPronunciationBtn: {
+    backgroundColor: '#00f0ff',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  addPronunciationBtnText: {
+    color: '#000',
+    fontWeight: 'bold',
+    fontSize: 13,
   },
 });

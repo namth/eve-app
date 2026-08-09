@@ -14,6 +14,7 @@ import {
   Platform,
   Switch,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { EVEAvatarWebView } from './src/components/EVEAvatarWebView';
 import { StatusBadge } from './src/components/StatusBadge';
@@ -28,9 +29,43 @@ import { notificationStorage } from './src/services/notificationStorage';
 import { peopleDatabaseService } from './src/services/peopleDatabaseService';
 import { enrollmentService } from './src/services/enrollmentService';
 import { faceRecognitionService } from './src/services/faceRecognitionService';
+import { pronunciationDictionaryService } from './src/services/pronunciationDictionaryService';
 import welcomeGreetings from './src/assets/data/welcome_greetings.json';
 import { ChatWebhookResponse, PushNotificationPayload } from './src/types/api';
 import { PersonProfile } from './src/types/personProfile';
+
+const PERSIST_LAST_USER_KEY = '@eve_setting_persist_last_user';
+
+async function getSettingPersistLastUser(): Promise<boolean> {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem(PERSIST_LAST_USER_KEY) === 'true';
+    }
+    return false;
+  }
+  try {
+    const filePath = `${FileSystem.documentDirectory}setting_persist_last_user.json`;
+    const info = await FileSystem.getInfoAsync(filePath);
+    if (info.exists) {
+      const val = await FileSystem.readAsStringAsync(filePath);
+      return val === 'true';
+    }
+  } catch (e) {}
+  return false;
+}
+
+async function setSettingPersistLastUser(value: boolean): Promise<void> {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(PERSIST_LAST_USER_KEY, String(value));
+    }
+    return;
+  }
+  try {
+    const filePath = `${FileSystem.documentDirectory}setting_persist_last_user.json`;
+    await FileSystem.writeAsStringAsync(filePath, String(value));
+  } catch (e) {}
+}
 
 const getRandomWelcomeGreeting = (): string => {
   if (Array.isArray(welcomeGreetings) && welcomeGreetings.length > 0) {
@@ -38,6 +73,27 @@ const getRandomWelcomeGreeting = (): string => {
     return welcomeGreetings[idx];
   }
   return 'Xin chào, tôi là Eve, trợ lý của công ty INOVA. Tôi có thể giúp gì cho bạn hôm nay?';
+};
+
+const getPersonalizedWelcomeGreeting = (person: PersonProfile | null): string => {
+  if (!person || !person.name) {
+    return getRandomWelcomeGreeting();
+  }
+
+  const pronoun = person.preferred_pronoun || 'Anh';
+  const name = person.name;
+  const honorific = `${pronoun} ${name}`;
+  const honorificLower = pronoun.toLowerCase();
+
+  const personalizedGreetings = [
+    `Em chào ${honorific} ạ! Chúc ${honorificLower} một ngày mới tốt lành và nhiều năng lượng!`,
+    `Dạ em chào ${honorific}! Rất vui được gặp lại ${honorificLower}. EVE đã sẵn sàng phục vụ ${honorificLower} rồi ạ.`,
+    `Em chào ${honorific} ạ! Hôm nay ${honorificLower} có công việc gì cần EVE hỗ trợ không ạ?`,
+    `Dạ xin chào ${honorific}! Chúc ${honorificLower} một ngày làm việc thật hiệu quả ạ!`,
+  ];
+
+  const idx = Math.floor(Math.random() * personalizedGreetings.length);
+  return personalizedGreetings[idx];
 };
 
 export default function App() {
@@ -55,13 +111,21 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showControlUI, setShowControlUI] = useState<boolean>(false);
   const [activeNotificationQueue, setActiveNotificationQueue] = useState<PushNotificationPayload[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
 
-  // User Profile & Recognition State
+  // User Profile & Persistence State
   const [currentPerson, setCurrentPerson] = useState<PersonProfile | null>(null);
   const currentPersonRef = useRef<PersonProfile | null>(null);
   currentPersonRef.current = currentPerson;
 
+  const [persistLastUser, setPersistLastUser] = useState<boolean>(false);
+  const persistLastUserRef = useRef<boolean>(false);
+  persistLastUserRef.current = persistLastUser;
+
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // Khóa chống trùng lặp đọc thông báo song song
+  const isProcessingNotificationRef = useRef<boolean>(false);
 
   // Enrollment State for Unknown Person
   const [isEnrolling, setIsEnrolling] = useState(false);
@@ -101,6 +165,8 @@ export default function App() {
    */
   const startVADListening = useCallback(async () => {
     resetIdleTimer();
+    setIsHandsFreeMode(true);
+    isHandsFreeModeRef.current = true;
     setIsRecording(true);
     const success = await audioService.startRecording({
       silenceThresholdMs: 800,
@@ -133,6 +199,12 @@ export default function App() {
       customQueue?: PushNotificationPayload[],
       overridePerson?: PersonProfile | null
     ): Promise<boolean> => {
+      // Khóa chống chạy trùng lặp song song
+      if (isProcessingNotificationRef.current) {
+        console.log('[App] processNotificationQueue skipped: Notification reading is already in progress.');
+        return false;
+      }
+
       const activePerson = overridePerson !== undefined ? overridePerson : currentPersonRef.current;
       console.log('[App] Processing notification queue. Active Person Role:', activePerson?.role);
 
@@ -145,9 +217,18 @@ export default function App() {
       const queue = customQueue || (await notificationStorage.getNotificationQueue());
       console.log('[App] Processing notification queue for ADMIN:', queue?.length);
 
-      if (!queue || queue.length === 0) return false;
+      if (!queue || queue.length === 0) {
+        setUnreadCount(0);
+        setActiveNotificationQueue([]);
+        return false;
+      }
 
+      isProcessingNotificationRef.current = true;
       setActiveNotificationQueue(queue);
+      setUnreadCount(queue.length);
+
+      // Dừng âm thanh cũ (ví dụ câu chào Guest mode) trước khi bắt đầu đọc thông báo
+      await audioService.stopAudio();
 
       while (isWakingUp) {
         await new Promise((res) => setTimeout(res, 200));
@@ -165,12 +246,16 @@ export default function App() {
             console.log('[App] EVE completely finished reading queued notifications to Admin!');
             setExpression(targetEmotion);
             await notificationStorage.clearNotificationQueue();
+            setActiveNotificationQueue([]);
+            setUnreadCount(0);
+            isProcessingNotificationRef.current = false;
             setTimeout(() => setExpression('idle'), 2000);
             resolve(true);
           })
           .catch(async (err) => {
             console.error('[App] Error during notification TTS playback:', err);
             setExpression('idle');
+            isProcessingNotificationRef.current = false;
             resolve(false);
           });
       });
@@ -179,12 +264,34 @@ export default function App() {
   );
 
   // Guard against React 18 Strict Mode double scan on mount
-  // Guard against React 18 Strict Mode double scan on mount
   const hasScannedRef = useRef(false);
-  // Ref lưu ID người đã được EVE chào mừng thành công (Tránh lặp lại câu chào)
   const greetedPersonIdRef = useRef<string | null>(null);
 
+  /**
+   * Cập nhật số lượng thông báo chưa đọc từ đĩa cứng
+   */
+  const refreshUnreadCount = useCallback(async () => {
+    const queue = await notificationStorage.getNotificationQueue();
+    const count = queue ? queue.length : 0;
+    setUnreadCount(count);
+    setActiveNotificationQueue(queue || []);
+  }, []);
 
+  /**
+   * Xóa nhận diện người dùng hiện tại (Trở về Guest Mode)
+   */
+  const handleClearActivePerson = useCallback(async () => {
+    console.log('[App] Clearing active user recognition. Returning to Guest Mode.');
+    setCurrentPerson(null);
+    await peopleDatabaseService.saveCurrentUser(null);
+    setShowProfileModal(false);
+    const clearMsg = 'Đã xóa nhận diện, cho em biết em đang nói chuyện với ai ạ';
+    setLastReplyText(clearMsg);
+    setExpression('happy');
+    audioService.playTTS(clearMsg, undefined, () => {
+      setExpression('idle');
+    });
+  }, [setExpression]);
 
   /**
    * Lắng nghe khi có 1 Push Notification mới đến
@@ -193,31 +300,40 @@ export default function App() {
     async (payload: PushNotificationPayload) => {
       console.log('[App] Received incoming push payload:', payload);
       const currentQueue = await notificationStorage.addNotificationToQueue(payload);
-      await processNotificationQueue(currentQueue);
+      setUnreadCount(currentQueue.length);
+
+      // Nếu đang đọc thông báo hoặc đang phát câu trả lời khác, chỉ lưu ngầm vào đĩa cứng
+      if (audioService.isPlayingTTS || isProcessingNotificationRef.current) {
+        console.log('[App] EVE is currently speaking. Saved incoming push to queue quietly.');
+        return;
+      }
+
+      if (currentPersonRef.current?.role === 'admin') {
+        await processNotificationQueue(currentQueue);
+      }
     },
     [processNotificationQueue]
   );
 
   /**
-   * Kiểm tra và tự động phát thông báo chưa đọc từ đĩa cứng khi vừa vào App
+   * Lắng nghe tự động đọc thông báo mỗi khi currentPerson chuyển sang ADMIN
    */
-  const checkAndPlayPendingNotification = useCallback(async () => {
-    const queue = await notificationStorage.getNotificationQueue();
-    if (queue && queue.length > 0) {
-      console.log('[App] Found pending notification queue in storage, count:', queue.length);
-      setActiveNotificationQueue(queue);
-      if (currentPersonRef.current?.role === 'admin') {
-        setTimeout(() => {
-          processNotificationQueue(queue);
-        }, 800);
-      }
+  useEffect(() => {
+    if (currentPerson?.role === 'admin') {
+      console.log('[App] currentPerson changed to ADMIN. Auto checking unread notifications...');
+      notificationStorage.getNotificationQueue().then((queue) => {
+        setUnreadCount(queue ? queue.length : 0);
+        if (queue && queue.length > 0 && !isProcessingNotificationRef.current) {
+          processNotificationQueue(queue, currentPerson);
+        }
+      });
+    } else {
+      refreshUnreadCount();
     }
-  }, [processNotificationQueue]);
-
-
+  }, [currentPerson, processNotificationQueue, refreshUnreadCount]);
 
   /**
-   * Khởi tạo App: Đăng ký Push Token, Lắng nghe thông báo & Chạy Nhận diện Ban đầu
+   * Khởi tạo App: Đăng ký Push Token, Lắng nghe thông báo & Phục hồi Người dùng cuối (nếu có)
    */
   useEffect(() => {
     if (hasScannedRef.current) return;
@@ -244,32 +360,85 @@ export default function App() {
       }
     );
 
-    // 3. Khởi tạo App: Luôn bắt đầu ở chế độ Guest (Chưa xác định danh tính)
-    peopleDatabaseService.getPeopleList().then(async () => {
-      // Mới vào app -> chưa xác định là ai (Guest Mode)
-      setCurrentPerson(null);
-      await peopleDatabaseService.saveCurrentUser(null);
+    // 3. Khởi tạo App & Phục hồi Người dùng cuối nếu bật Cài đặt
+    (async () => {
+      await notificationService.getInitialNotification();
+      await peopleDatabaseService.getPeopleList();
+      const shouldPersist = await getSettingPersistLastUser();
+      setPersistLastUser(shouldPersist);
+      persistLastUserRef.current = shouldPersist;
 
-      // Luồng Welcome: Phát 1 câu chào ngẫu nhiên giới thiệu Eve & INOVA ở dạng Guest
-      const greetingText = getRandomWelcomeGreeting();
-      console.log('[App] Welcome Flow (Guest Mode): Playing random greeting:', greetingText);
-      setLastReplyText(greetingText);
-      setExpression('speaking');
+      let initialPerson: PersonProfile | null = null;
+      if (shouldPersist) {
+        initialPerson = await peopleDatabaseService.getCurrentUser();
+        console.log('[App] Persist Last User is ON. Restored user:', initialPerson?.name, 'Role:', initialPerson?.role);
+      } else {
+        console.log('[App] Persist Last User is OFF. Defaulting to Guest Mode.');
+        await peopleDatabaseService.saveCurrentUser(null);
+      }
 
-      await audioService.playTTS(greetingText, undefined, () => {
-        setExpression('idle');
-        if (isHandsFreeModeRef.current) {
-          console.log('[App] Welcome greeting completed! Starting Hands-Free VAD listening as Guest...');
-          startVADListening();
+      setCurrentPerson(initialPerson);
+
+      if (initialPerson) {
+        if (initialPerson.role === 'admin') {
+          console.log('[App] Restored Admin user on startup. Auto checking notifications...');
+          const queue = await notificationStorage.getNotificationQueue();
+          setUnreadCount(queue ? queue.length : 0);
+
+          if (queue && queue.length > 0) {
+            processNotificationQueue(queue, initialPerson);
+          } else {
+            // Admin user without pending notifications -> Speak personalized Admin greeting by name!
+            const greetingText = getPersonalizedWelcomeGreeting(initialPerson);
+            console.log('[App] Restored Admin user (No notifications). Playing personalized greeting:', greetingText);
+            setLastReplyText(greetingText);
+            setExpression('speaking');
+
+            await audioService.playTTS(greetingText, undefined, () => {
+              setExpression('idle');
+              if (isHandsFreeModeRef.current) {
+                console.log('[App] Personalized greeting completed! Starting Hands-Free VAD listening...');
+                startVADListening();
+              }
+            });
+          }
+        } else {
+          // Friend user -> Speak personalized Friend greeting by name!
+          const greetingText = getPersonalizedWelcomeGreeting(initialPerson);
+          console.log('[App] Restored Friend user on startup. Playing personalized greeting:', greetingText);
+          setLastReplyText(greetingText);
+          setExpression('speaking');
+
+          await audioService.playTTS(greetingText, undefined, () => {
+            setExpression('idle');
+            if (isHandsFreeModeRef.current) {
+              console.log('[App] Personalized greeting completed! Starting Hands-Free VAD listening...');
+              startVADListening();
+            }
+          });
         }
-      });
-    });
+      } else {
+        // Guest mode -> Generic Guest Welcome greeting
+        const greetingText = getRandomWelcomeGreeting();
+        console.log('[App] Welcome Flow (Guest Mode): Playing random greeting:', greetingText);
+        setLastReplyText(greetingText);
+        setExpression('speaking');
+
+        await audioService.playTTS(greetingText, undefined, () => {
+          setExpression('idle');
+          if (isHandsFreeModeRef.current) {
+            console.log('[App] Welcome greeting completed! Starting Hands-Free VAD listening...');
+            startVADListening();
+          }
+        });
+      }
+    })();
 
     return () => {
       foregroundSub.remove();
       backgroundSub.remove();
     };
-  }, [handleIncomingSpeech, processNotificationQueue, checkAndPlayPendingNotification, startVADListening, setExpression]);
+  }, [handleIncomingSpeech, processNotificationQueue, startVADListening, setExpression]);
 
   /**
    * Gửi câu lệnh bằng văn bản lên n8n Webhook
@@ -299,22 +468,46 @@ export default function App() {
 
       // TỰ ĐỘNG CẬP NHẬT / THÊM MỚI / ACTIVE NGƯỜI DÙNG TỪ N8N RESPONSE (KÈM DIFF CHECK)
       const incomingPerson = response.person || response.update_person;
+      let syncedPerson: PersonProfile | null = null;
+
       if (incomingPerson && incomingPerson.name) {
-        const { person: syncedPerson, isUpdated } = await peopleDatabaseService.syncPersonFromResponse(
+        const syncRes = await peopleDatabaseService.syncPersonFromResponse(
           incomingPerson,
           currentPerson
         );
+        syncedPerson = syncRes.person;
         setCurrentPerson(syncedPerson);
-        if (isUpdated) {
+        if (persistLastUserRef.current) {
+          await peopleDatabaseService.saveCurrentUser(syncedPerson);
+        }
+        if (syncRes.isUpdated) {
           console.log('[App] Profile synced & saved for:', syncedPerson.name, 'Role:', syncedPerson.role);
         } else {
           console.log('[App] Activated person profile for:', syncedPerson.name, 'Role:', syncedPerson.role);
         }
+      }
 
-        // NẾU ROLE CỦA NGƯỜI VỪA ACTIVE LÀ ADMIN -> TIẾN HÀNH LUỒNG CŨ: ĐỌC NOTIFICATIONS (NẾU CÓ)
-        if (syncedPerson.role === 'admin') {
-          console.log('[App] Active person is ADMIN! Checking pending notifications...');
-          processNotificationQueue(undefined, syncedPerson);
+      // TỰ ĐỘNG LƯU TỪ ĐIỂN PHÁT ÂM MỚI TỪ N8N RESPONSE (PRONUNCIATION PAYLOAD)
+      if (response.pronunciation && response.pronunciation.word && response.pronunciation.speak) {
+        await pronunciationDictionaryService.savePronunciation(
+          response.pronunciation.word,
+          response.pronunciation.speak
+        );
+        console.log('[App] Learned new pronunciation:', response.pronunciation.word, '->', response.pronunciation.speak);
+      }
+
+      // XỬ LÝ XUNG ĐỘT ÂM THANH: Nếu là Admin và có thông báo chưa đọc -> Ưu tiên đọc thông báo & BỎ QUA reply_text từ n8n
+      const activeUser = syncedPerson || currentPerson;
+      if (activeUser?.role === 'admin') {
+        const pendingQueue = await notificationStorage.getNotificationQueue();
+        if (pendingQueue && pendingQueue.length > 0) {
+          console.log('[App] Priority: Active user is ADMIN with pending notifications. Reading notifications & SKIPPING n8n reply_text!');
+          await processNotificationQueue(pendingQueue, activeUser);
+          setIsProcessing(false);
+          if (isHandsFreeModeRef.current) {
+            startVADListening();
+          }
+          return;
         }
       }
 
@@ -325,7 +518,6 @@ export default function App() {
         setExpression(targetEmotion);
         setTimeout(() => {
           setExpression('idle');
-          // NẾU ĐANG Ở CHẾ ĐỘ HANDS-FREE: TỰ ĐỘNG BẬT LẠI MIC VAD LẮNG NGHE CÂU TIẾP THEO
           if (isHandsFreeModeRef.current) {
             console.log('[App] Auto Re-Listen Loop: Hands-Free VAD restarted!');
             startVADListening();
@@ -428,20 +620,16 @@ export default function App() {
   };
 
   /**
-   * Bật / Tạm dừng chế độ VAD đàm thoại tự động (Hands-Free)
+   * Tạm dừng chế độ VAD đàm thoại tự động (Hands-Free) khi bấm nút Dừng VAD
    */
   const handleTogglePauseVAD = () => {
-    if (isHandsFreeMode) {
-      console.log('[App] User manually PAUSED Hands-Free VAD listening.');
-      setIsHandsFreeMode(false);
-      if (isRecording) {
-        audioService.stopRecording();
-        setIsRecording(false);
-      }
-    } else {
-      console.log('[App] User manually RESUMED Hands-Free VAD listening.');
-      setIsHandsFreeMode(true);
-      startVADListening();
+    console.log('[App] User manually PAUSED Hands-Free VAD listening.');
+    setIsHandsFreeMode(false);
+    isHandsFreeModeRef.current = false;
+    if (isRecording) {
+      audioService.stopRecording();
+      setIsRecording(false);
+      setExpression('idle');
     }
   };
 
@@ -478,7 +666,28 @@ export default function App() {
             <Text style={styles.headerSubtitle}>n8n Agent Brain</Text>
           </View>
 
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            {/* Admin Notification Bell Badge Button */}
+            {currentPerson?.role === 'admin' && (
+              <TouchableOpacity
+                style={styles.notifBellBtn}
+                onPress={() => {
+                  isProcessingNotificationRef.current = false;
+                  processNotificationQueue();
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.settingsIcon}>🔔</Text>
+                {unreadCount > 0 && (
+                  <View style={styles.notifBadgeCircle}>
+                    <Text style={styles.notifBadgeCount}>
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               style={styles.profileQuickBtn}
               onPress={() => setShowProfileModal(true)}
@@ -559,7 +768,10 @@ export default function App() {
 
               <TouchableOpacity
                 style={styles.notifReplayBtn}
-                onPress={() => processNotificationQueue(activeNotificationQueue)}
+                onPress={() => {
+                  isProcessingNotificationRef.current = false;
+                  processNotificationQueue(activeNotificationQueue);
+                }}
                 activeOpacity={0.8}
               >
                 <Text style={styles.notifReplayIcon}>🔊</Text>
@@ -665,12 +877,24 @@ export default function App() {
           visible={showProfileModal}
           onClose={() => setShowProfileModal(false)}
           currentPerson={currentPerson}
-          onSelectPerson={(person) => {
+          onSelectPerson={async (person) => {
             setCurrentPerson(person);
-            if (person.role === 'admin') {
-              processNotificationQueue(undefined, person);
+            if (persistLastUserRef.current) {
+              await peopleDatabaseService.saveCurrentUser(person);
+            }
+            const queue = await notificationStorage.getNotificationQueue();
+            if (person.role === 'admin' && queue && queue.length > 0) {
+              processNotificationQueue(queue, person);
+            } else {
+              const greetingText = getPersonalizedWelcomeGreeting(person);
+              setLastReplyText(greetingText);
+              setExpression('speaking');
+              audioService.playTTS(greetingText, undefined, () => {
+                setExpression('idle');
+              });
             }
           }}
+          onClearCurrentPerson={handleClearActivePerson}
         />
 
         {/* Modal Settings General */}
@@ -686,6 +910,30 @@ export default function App() {
                   onValueChange={setShowControlUI}
                   trackColor={{ false: '#334155', true: '#0ea5e9' }}
                   thumbColor={showControlUI ? '#38bdf8' : '#94a3b8'}
+                />
+              </View>
+
+              <View style={styles.settingRow}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.modalLabel}>Ghi nhớ người dùng cuối cùng:</Text>
+                  <Text style={styles.settingDesc}>
+                    Tự động phục hồi thông tin người dùng gần nhất khi mở lại ứng dụng.
+                  </Text>
+                </View>
+                <Switch
+                  value={persistLastUser}
+                  onValueChange={async (val) => {
+                    setPersistLastUser(val);
+                    persistLastUserRef.current = val;
+                    await setSettingPersistLastUser(val);
+                    if (val) {
+                      await peopleDatabaseService.saveCurrentUser(currentPerson);
+                    } else {
+                      await peopleDatabaseService.saveCurrentUser(null);
+                    }
+                  }}
+                  trackColor={{ false: '#334155', true: '#0ea5e9' }}
+                  thumbColor={persistLastUser ? '#38bdf8' : '#94a3b8'}
                 />
               </View>
 
@@ -727,39 +975,6 @@ export default function App() {
                   </TouchableOpacity>
                 )}
               </View>
-
-              <TouchableOpacity
-                style={styles.testNotifBtn}
-                onPress={() => {
-                  setShowSettings(false);
-                  handleIncomingSpeech({
-                    action: 'speak_notification',
-                    title: 'Thông báo n8n đơn',
-                    text: 'Sếp vừa phê duyệt hợp đồng dự án A.',
-                    emotion: 'happy',
-                  });
-                }}
-              >
-                <Text style={styles.testNotifText}>🔔 Thử nhận 1 thông báo</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.testNotifBtn, { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: '#10b981' }]}
-                onPress={async () => {
-                  setShowSettings(false);
-                  const sampleQueue: PushNotificationPayload[] = [
-                    { action: 'speak_notification', text: 'Doanh thu hôm nay đạt mốc 100 triệu đồng', emotion: 'happy' },
-                    { action: 'speak_notification', text: 'Hệ thống server vừa được nâng cấp băng thông', emotion: 'smile' },
-                    { action: 'speak_notification', text: 'Bạn có 1 lịch họp mới vào lúc 3 giờ chiều', emotion: 'happy' },
-                  ];
-                  for (const item of sampleQueue) {
-                    await notificationStorage.addNotificationToQueue(item);
-                  }
-                  processNotificationQueue();
-                }}
-              >
-                <Text style={[styles.testNotifText, { color: '#34d399' }]}>🚀 Thử nhận 3 thông báo liên tiếp</Text>
-              </TouchableOpacity>
 
               <View style={styles.modalButtons}>
                 <TouchableOpacity
@@ -1109,9 +1324,45 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  notifBellBtn: {
+    position: 'relative',
+    backgroundColor: '#1e293b',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderColor: '#00f0ff55',
+    borderWidth: 1,
+  },
+  notifBadgeCircle: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#ef4444',
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#030712',
+  },
+  notifBadgeCount: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  settingDesc: {
+    color: '#64748b',
+    fontSize: 11,
+    marginTop: 2,
+  },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    marginTop: 10,
   },
   modalSaveBtn: {
     backgroundColor: '#0ea5e9',

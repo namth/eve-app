@@ -1,6 +1,7 @@
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import { PermissionsAndroid, Platform } from 'react-native';
+import { ttsNormalizerService } from './ttsNormalizerService';
 
 class AudioService {
   private soundObject: Audio.Sound | null = null;
@@ -27,11 +28,15 @@ class AudioService {
 
   /**
    * Phát âm thanh TTS (từ URL n8n / Edge-TTS / Native)
+   * Tự động chuẩn hóa địa chỉ website/domain thành giọng đọc Tiếng Việt tự nhiên
    */
   async playTTS(text: string, audioUrl?: string, onEnd?: () => void): Promise<void> {
     try {
       await this.stopAudio();
       this.isPlayingTTSStatus = true;
+
+      // Chuẩn hóa URL/Domain (ví dụ hoangskitchenhoian.com -> hoàng s kitchen hội an chấm com)
+      const speechText = await ttsNormalizerService.normalizeForTTS(text);
 
       const handlePlaybackEnd = () => {
         this.isPlayingTTSStatus = false;
@@ -58,13 +63,13 @@ class AudioService {
       }
 
       // 2. Ưu tiên 2: Phát qua Edge-TTS / Stream Proxy
-      const encodedText = encodeURIComponent(text);
+      const encodedText = encodeURIComponent(speechText);
       const edgeTtsProxy = process.env.EXPO_PUBLIC_EDGE_TTS_URL;
       const ttsStreamUrl = edgeTtsProxy
         ? `${edgeTtsProxy}?text=${encodedText}&voice=vi-VN-HoaiMyNeural`
         : `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=vi&client=tw-ob`;
 
-      console.log('[AudioService] Playing AI Voice Stream (Speed 1.15x)...');
+      console.log('[AudioService] Playing AI Voice Stream for speechText:', speechText);
       const { sound } = await Audio.Sound.createAsync(
         { uri: ttsStreamUrl },
         { shouldPlay: true, rate: 1.15, shouldCorrectPitch: true }
@@ -78,8 +83,9 @@ class AudioService {
       });
     } catch (error) {
       console.warn('[AudioService] Neural stream error, falling back to Native TTS:', error);
+      const speechText = await ttsNormalizerService.normalizeForTTS(text);
       this.isPlayingTTSStatus = true;
-      Speech.speak(text, {
+      Speech.speak(speechText, {
         language: 'vi-VN',
         pitch: 1.05,
         rate: 1.15,
@@ -164,46 +170,88 @@ class AudioService {
       const silenceThreshold = options?.silenceThresholdMs || 800; // 800ms
       let hasStartedSpeaking = false;
       let silenceStartTime: number | null = null;
+      let speechStartedTime: number | null = null;
       let isTriggeredEnd = false;
+
+      // Cân chỉnh tiếng ồn nền tự động (Adaptive Dynamic Noise Floor)
+      const recordingStartTime = Date.now();
+      let isCalibrated = false;
+      let samplingSum = 0;
+      let samplingCount = 0;
+      let speechStartThreshold = -32; // Ngưỡng mặc định bắt đầu nói
+      let silenceEndThreshold = -42;  // Ngưỡng mặc định ngắt im lặng
 
       recording.setOnRecordingStatusUpdate((status) => {
         if (!status.isRecording || isTriggeredEnd) return;
 
         const metering = status.metering ?? -160; // dB value
 
-        // 1. CẮT NGANG THÔNG MINH (Smart Barge-In): Chỉ kích hoạt khi ĐỒNG THỜI có tiếng nói (> -32dB) VÀ Đang nhìn vào EVE
-        if (this.isPlayingTTSStatus && metering > -32) {
+        // 1. ĐO TIẾNG ỒN NỀN TRONG 300MS ĐẦU TIÊN
+        const now = Date.now();
+        if (!isCalibrated) {
+          if (now - recordingStartTime <= 300) {
+            if (metering > -160) {
+              samplingSum += metering;
+              samplingCount++;
+            }
+            return;
+          } else {
+            isCalibrated = true;
+            const ambientNoise = samplingCount > 0 ? samplingSum / samplingCount : -50;
+            // Tính toán ngưỡng động phù hợp với môi trường thực tế
+            speechStartThreshold = Math.max(Math.round(ambientNoise + 10), -32);
+            silenceEndThreshold = Math.max(Math.round(ambientNoise + 4), -40);
+            console.log(`[AudioService] Adaptive VAD Calibrated: Ambient=${Math.round(ambientNoise)}dB | SpeechStart=${speechStartThreshold}dB | SilenceEnd=${silenceEndThreshold}dB`);
+          }
+        }
+
+        // 2. CẮT NGANG THÔNG MINH (Smart Barge-In): Ngắt TTS khi nói vượt ngưỡng ồn động & Đang nhìn EVE
+        if (this.isPlayingTTSStatus && metering > speechStartThreshold) {
           const isLooking = options?.checkIsLookingAtEVE ? options.checkIsLookingAtEVE() : true;
           if (isLooking) {
-            console.log('[AudioService] Smart Barge-in triggered! (Volume > -32dB AND Looking at EVE). Halting TTS...');
+            console.log(`[AudioService] Smart Barge-in triggered! (Volume ${metering}dB > ${speechStartThreshold}dB AND Looking at EVE). Halting TTS...`);
             this.stopAudio();
             if (options?.onBargeIn) options.onBargeIn();
             return;
           } else {
-            console.log('[AudioService] Noise > -32dB detected during TTS, but user is NOT looking at EVE. Ignoring Barge-in.');
+            console.log(`[AudioService] Noise ${metering}dB detected during TTS, but user is NOT looking at EVE. Ignoring Barge-in.`);
           }
         }
 
-        // 2. VAD: Phát hiện bắt đầu nói khi âm lượng vượt ngưỡng -32 dB (Nhạy mượt cho giọng nói nhỏ/vừa)
-        if (metering > -32) {
+        // 3. VAD: Bắt đầu phát hiện tiếng nói người dùng
+        if (metering > speechStartThreshold) {
           if (!hasStartedSpeaking) {
-            console.log('[AudioService] VAD: Speech started (Metering:', metering, 'dB)');
+            console.log(`[AudioService] VAD: Speech started (Metering: ${metering}dB > Threshold: ${speechStartThreshold}dB)`);
             hasStartedSpeaking = true;
+            speechStartedTime = now;
             this.speechDetectedFlag = true;
           }
-          silenceStartTime = null; // Reset bộ đếm im lặng
-        } else if (hasStartedSpeaking && metering < -42) {
-          // 3. VAD: Tính toán khoảng thời gian im lặng sau khi đã có tiếng nói thực sự
+          silenceStartTime = null; // Reset bộ đếm im lặng khi đang có âm thanh giọng nói
+        } else if (hasStartedSpeaking && metering < silenceEndThreshold) {
+          // 4. VAD: Phát hiện im lặng sau khi đã nói (khi âm lượng xuống dưới ngưỡng im lặng động)
           if (!silenceStartTime) {
-            silenceStartTime = Date.now();
+            silenceStartTime = now;
           } else {
-            const silenceDuration = Date.now() - silenceStartTime;
+            const silenceDuration = now - silenceStartTime;
             if (silenceDuration >= silenceThreshold) {
               console.log(`[AudioService] VAD: Speech end detected after ${silenceDuration}ms silence! Auto-stopping...`);
               isTriggeredEnd = true;
               if (options?.onSpeechEnd) {
                 options.onSpeechEnd();
               }
+            }
+          }
+        }
+
+        // 5. MAX SPEECH HARD TIMEOUT (8 GIÂY TOÀN BỘ CÂU NÓI):
+        // Nếu ở môi trường quá ồn khiến tiếng ồn kéo dài quá 8 giây sau khi đã nói, tự động ngắt gửi STT
+        if (hasStartedSpeaking && speechStartedTime && !isTriggeredEnd) {
+          const speechDuration = now - speechStartedTime;
+          if (speechDuration >= 8000) {
+            console.log(`[AudioService] VAD: Max speech duration reached (${speechDuration}ms >= 8000ms). Auto-stopping for STT...`);
+            isTriggeredEnd = true;
+            if (options?.onSpeechEnd) {
+              options.onSpeechEnd();
             }
           }
         }
