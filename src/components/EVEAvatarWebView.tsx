@@ -421,19 +421,23 @@ export const EVEAvatarWebView: React.FC<Props> = ({
     }
   }, [expression]);
 
+  const resolveAvatarImageUri = (config?: HumanAvatarConfig): string | null => {
+    if (config?.type === 'custom' && config.customUri) {
+      return config.customUri;
+    }
+    const presetId = config?.presetId || 'office_girl';
+    const presetObj = PRESET_AVATARS[presetId] || PRESET_AVATARS['office_girl'];
+    if (presetObj && presetObj.imagePath) {
+      const resolved = Image.resolveAssetSource(presetObj.imagePath);
+      return resolved ? resolved.uri : null;
+    }
+    return null;
+  };
+
   // Send Human Avatar Image to WebView when humanMode is active
   useEffect(() => {
     if (avatarMode === 'human' && webViewRef.current) {
-      let imageUri: string | null = null;
-      if (humanConfig?.type === 'custom' && humanConfig.customUri) {
-        imageUri = humanConfig.customUri;
-      } else {
-        const presetId = humanConfig?.presetId || 'office_girl';
-        const presetObj = PRESET_AVATARS[presetId];
-        if (presetObj) {
-          imageUri = Image.resolveAssetSource(presetObj.imagePath).uri;
-        }
-      }
+      const imageUri = resolveAvatarImageUri(humanConfig);
 
       if (imageUri) {
         // Delayed send to ensure WebView JavaScript is loaded
@@ -479,16 +483,7 @@ export const EVEAvatarWebView: React.FC<Props> = ({
         mixedContentMode="always"
         onLoadEnd={() => {
           if (avatarMode === 'human') {
-            let imageUri: string | null = null;
-            if (humanConfig?.type === 'custom' && humanConfig.customUri) {
-              imageUri = humanConfig.customUri;
-            } else {
-              const presetId = humanConfig?.presetId || 'office_girl';
-              const presetObj = PRESET_AVATARS[presetId];
-              if (presetObj) {
-                imageUri = Image.resolveAssetSource(presetObj.imagePath).uri;
-              }
-            }
+            const imageUri = resolveAvatarImageUri(humanConfig);
             if (imageUri && webViewRef.current) {
               webViewRef.current.postMessage(
                 JSON.stringify({ type: 'SET_AVATAR_IMAGE', payload: imageUri })

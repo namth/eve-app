@@ -16,7 +16,8 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Ứng dụng cần sử dụng Micro để nhận diện câu lệnh bằng giọng nói của bạn.",
         "NSSpeechRecognitionUsageDescription": "Ứng dụng sử dụng dịch vụ nhận diện giọng nói để giao tiếp với EVE AI Assistant.",
-        "NSCameraUsageDescription": "Ứng dụng cần sử dụng Camera để nhận diện khuôn mặt và hướng nhìn (Gaze Detection) của bạn."
+        "NSCameraUsageDescription": "Ứng dụng cần sử dụng Camera để nhận diện khuôn mặt và hướng nhìn (Gaze Detection) của bạn.",
+        "NSPhotoLibraryUsageDescription": "Ứng dụng cần truy cập thư viện ảnh để chọn ảnh đại diện người thật cho EVE."
       }
     },
     "notification": {
@@ -40,7 +41,9 @@
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "POST_NOTIFICATIONS",
-        "MODIFY_AUDIO_SETTINGS"
+        "MODIFY_AUDIO_SETTINGS",
+        "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
       ]
     },
     "web": {
@@ -58,6 +61,12 @@
         "expo-av",
         {
           "microphonePermission": "Cho phép EVE nghe giọng nói của bạn để thực hiện các câu lệnh."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cho phép EVE truy cập thư viện ảnh để chọn avatar người thật."
         }
       ]
     ],
