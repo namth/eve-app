@@ -5,10 +5,11 @@
 ```mermaid
 flowchart TD
     subgraph MobileApp ["📱 Mobile App (React Native / Expo)"]
-        UI["EVE UI Canvas / WebView (EVE Expressions & Animations)"]
+        UI["Avatar UI Canvas / WebView (Robot SVG / Human WebGL MediaPipe Engine)"]
         STT["Mobile STT (Voice to Text)"]
         TTSPlayer["Expo Audio Player (TTS Audio Stream)"]
         PushHandler["Expo Notifications Listener"]
+        AvatarConfig["AsyncStorage (@eve_avatar_mode, @eve_human_avatar_config)"]
         StateManager["App State & Timeout Controller (30s Idle->Sleep)"]
     end
 

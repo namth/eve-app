@@ -27,14 +27,20 @@ Dự án **EVE Mobile Voice AI Assistant** là một ứng dụng di động th�
 
 ---
 
-## 1.3. Giao diện Robot EVE & Trạng thái Biểu cảm (EVE Expressions)
-Ứng dụng kế thừa chính xác thiết kế từ `eve_robot_interface.html`:
-- **Đầu & Thân**: Đầu hình quả trứng bóng bẩy, thân hình giọt nước nhẵn nhụi với hiệu ứng lơ lửng `hover`.
-- **Mắt SVG Neon**: Đôi mắt LED dẹt cyan glowing (`#00f0ff`) trên nền Visor tối màu thẳm, chớp mắt tự nhiên `blink-half` & `blink-closed`.
-- **5 Trạng thái Cảm xúc**:
+## 1.3. Giao diện Robot EVE & Chế độ Avatar Người thật (EVE Expressions & Hybrid Avatar)
+Ứng dụng hỗ trợ chuyển đổi linh hoạt giữa 2 chế độ hiển thị:
+1. **Chế độ EVE Robot 🤖 (`eve_robot_interface.html`)**:
+   - Đầu hình quả trứng bóng bẩy, thân hình giọt nước nhẵn nhụi với hiệu ứng lơ lửng `hover`.
+   - Mắt SVG Neon glowing cyan (`#00f0ff`) trên nền Visor tối màu.
+2. **Chế độ Người thật Nói chuyện 👩 (`human_avatar_interface.html`)**:
+   - Nhân vật người thật (Mẫu AI Girl có sẵn hoặc Ảnh tải lên từ thư viện máy).
+   - Sử dụng **Google MediaPipe Face Mesh (WebGL Canvas)** biến dạng khuôn mặt real-time: Mấp máy môi khớp giọng nói tiếng Việt (Lip-sync), chớp mắt tự nhiên 3-5s/lần và nghiêng đầu nhẹ theo trạng thái.
+
+- **6 Trạng thái Cảm xúc đồng bộ cả 2 chế độ**:
   1. `idle`: Trạng thái chờ, chớp mắt chu kỳ 3-6s.
-  2. `happy`: Cười khúc khích (`giggle-anim`), tay vẫy lên, mắt cong cười.
-  3. `thinking`: Visor trượt xuống, tay xoa cằm (`rub-chin-anim`), bong bóng suy nghĩ đám mây mờ dấu `?`.
-  4. `speaking`: Đôi mắt co giãn nhịp nhàng theo biên độ sóng âm giọng nói, hai tay mở.
-  5. `sleeping`: Mắt nhắm, tay khép, hào quang tỏa sáng dịu quanh EVE (`aura-pulse`), bong bóng đám mây `Zzz`.
-  6. `wakeup`: Giật mình nảy người nhẹ (`startle`), tay bật mở nhanh, mắt chớp nảy dấu `!`, hạ chậm về `idle`.
+  2. `happy`: Cười khúc khích (`giggle-anim`) / Nụ cười rạng rỡ.
+  3. `thinking`: Visor trượt xuống / Nghiêng đầu suy nghĩ, hiển thị `?`.
+  4. `speaking`: Mắt co giãn / Môi mấp máy khớp theo biên độ sóng âm giọng nói.
+  5. `sleeping`: Mắt nhắm, hào quang dịu, hiển thị `Zzz`.
+  6. `wakeup`: Giật mình nảy người nhẹ (`startle`), hiển thị `!`, hạ chậm về `idle`.
+

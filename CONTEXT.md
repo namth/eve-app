@@ -84,3 +84,5 @@ eve-app/
 - [Hợp đồng API & Formats JSON](file:///Users/namtran/Local%20Apps/eve-app/docs/api-contracts.md)
 - [Thư viện & Quy chuẩn Code](file:///Users/namtran/Local%20Apps/eve-app/docs/conventions.md)
 - [Danh sách Roadmap Tasks](file:///Users/namtran/Local%20Apps/eve-app/docs/tasks.md)
+- [Spec Tính năng Giao diện Người thật (FEAT-HUMAN-AVATAR)](file:///Users/namtran/Local%20Apps/eve-app/docs/features/hybrid-human-avatar.md)
+
