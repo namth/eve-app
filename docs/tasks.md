@@ -58,10 +58,11 @@ Danh sách công việc được chia nhỏ thành từng phiên làm việc g�
 ---
 
 ## 📋 Task 10: Xây dựng Tính năng Hybrid Real-Human Talking Avatar (FEAT-HUMAN-AVATAR)
-- [ ] **Task 10.1**: Thu thập & Chuẩn bị 2 ảnh mẫu AI Girl chuẩn nét trong `assets/avatars/`.
-- [ ] **Task 10.2**: Viết WebGL Mesh Morphing & Viseme Audio Analyser Engine trong `human_avatar_interface.html` (sử dụng Google MediaPipe Face Mesh).
-- [ ] **Task 10.3**: Xây dựng UI Modal `AvatarSelectorModal.tsx` chọn Avatar & upload ảnh người thật (`expo-image-picker`).
-- [ ] **Task 10.4**: Thêm Nút Switch `AvatarSwitchToggle` trên `ControlPanel.tsx` để chuyển đổi mượt 🤖 Robot ↔️ 👩 Người thật.
-- [ ] **Task 10.5**: Tích hợp hook `useAvatarMode` lưu cấu hình `@eve_avatar_mode` & `@eve_human_avatar_config` vào `AsyncStorage`.
-- [ ] **Task 10.6**: Kiểm thử chuyển đổi Avatar, mấp máy môi khớp âm thanh tiếng Việt khi EVE đọc thông báo Push Notification.
+- [x] **Task 10.1**: Thu thập & Chuẩn bị 2 ảnh mẫu AI Girl chuẩn nét trong `assets/avatars/`.
+- [x] **Task 10.2**: Viết WebGL Mesh Morphing & Viseme Audio Analyser Engine trong `human_avatar_interface.html` (sử dụng Google MediaPipe Face Mesh).
+- [x] **Task 10.3**: Xây dựng UI Modal `AvatarSelectorModal.tsx` chọn Avatar & upload ảnh người thật (`expo-image-picker`).
+- [x] **Task 10.4**: Thêm Nút Switch `AvatarSwitchToggle` trên `ControlPanel.tsx` để chuyển đổi mượt 🤖 Robot ↔️ 👩 Người thật.
+- [x] **Task 10.5**: Tích hợp hook `useAvatarMode` lưu cấu hình `@eve_avatar_mode` & `@eve_human_avatar_config` vào `AsyncStorage`.
+- [x] **Task 10.6**: Kiểm thử chuyển đổi Avatar, mấp máy môi khớp âm thanh tiếng Việt khi EVE đọc thông báo Push Notification.
+
 
