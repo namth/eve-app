@@ -2,3 +2,10 @@ node_modules
 .env
 *.json.key
 google-service-account.json
+.expo/
+dist/
+web-build/
+.eas/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

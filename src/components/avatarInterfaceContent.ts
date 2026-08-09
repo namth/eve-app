@@ -205,10 +205,12 @@ export const HUMAN_EVE_HTML_CONTENT = `
         function setAvatarImage(src) {
             if (!src) return;
             const newImg = new Image();
-            newImg.crossOrigin = "Anonymous";
             newImg.onload = () => {
                 avatarImage = newImg;
                 imageLoaded = true;
+            };
+            newImg.onerror = (e) => {
+                console.warn("Avatar image load error", e);
             };
             newImg.src = src;
         }
