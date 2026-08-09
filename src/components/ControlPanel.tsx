@@ -6,13 +6,17 @@ interface Props {
   currentExpression: EVEExpression;
   onSelectExpression: (exp: EVEExpression) => void;
   onOpenSettings?: () => void;
+  onOpenAvatarSelector?: () => void;
   onTriggerScan?: () => void;
+  avatarMode?: 'robot' | 'human';
 }
 
 export const ControlPanel: React.FC<Props> = ({
   currentExpression,
   onSelectExpression,
   onOpenSettings,
+  onOpenAvatarSelector,
+  avatarMode = 'robot',
 }) => {
   const expressions: { key: EVEExpression; label: string; icon: string }[] = [
     { key: 'idle', label: 'Idle', icon: '🤖' },
@@ -27,10 +31,20 @@ export const ControlPanel: React.FC<Props> = ({
 
   return (
     <View style={styles.floatingPanel}>
+      {onOpenAvatarSelector && (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={[styles.btn, { borderColor: '#00f0ff', backgroundColor: 'rgba(0, 240, 255, 0.25)' }]}
+          onPress={onOpenAvatarSelector}
+        >
+          <Text style={styles.btnIcon}>{avatarMode === 'human' ? '👩' : '🤖'}</Text>
+        </TouchableOpacity>
+      )}
+
       {onOpenSettings && (
         <TouchableOpacity
           activeOpacity={0.7}
-          style={[styles.btn, { borderColor: '#00f0ff', backgroundColor: 'rgba(0, 240, 255, 0.2)' }]}
+          style={[styles.btn, { borderColor: 'rgba(255, 255, 255, 0.3)', backgroundColor: 'rgba(15, 23, 42, 0.85)' }]}
           onPress={onOpenSettings}
         >
           <Text style={styles.btnIcon}>⚙️</Text>

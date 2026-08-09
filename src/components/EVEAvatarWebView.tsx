@@ -3,10 +3,16 @@ import { StyleSheet, View, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { EVEExpression } from '../types/api';
 
+import { AvatarMode, HumanAvatarConfig, PRESET_AVATARS } from '../types/avatar';
+import { Image } from 'react-native';
+import { HUMAN_EVE_HTML_CONTENT } from './avatarInterfaceContent';
+
 interface Props {
   expression: EVEExpression;
   onTapCanvas?: () => void;
   onExpressionChanged?: (exp: EVEExpression) => void;
+  avatarMode?: AvatarMode;
+  humanConfig?: HumanAvatarConfig;
 }
 
 // Inline HTML snippet derived from eve_robot_interface.html for reliable WebView loading across iOS/Android
@@ -397,9 +403,12 @@ export const EVEAvatarWebView: React.FC<Props> = ({
   expression,
   onTapCanvas,
   onExpressionChanged,
+  avatarMode = 'robot',
+  humanConfig,
 }) => {
   const webViewRef = useRef<WebView>(null);
 
+  // Send expression changes to WebView
   useEffect(() => {
     if (webViewRef.current) {
       if (expression === 'wakeup') {
@@ -412,6 +421,34 @@ export const EVEAvatarWebView: React.FC<Props> = ({
     }
   }, [expression]);
 
+  // Send Human Avatar Image to WebView when humanMode is active
+  useEffect(() => {
+    if (avatarMode === 'human' && webViewRef.current) {
+      let imageUri: string | null = null;
+      if (humanConfig?.type === 'custom' && humanConfig.customUri) {
+        imageUri = humanConfig.customUri;
+      } else {
+        const presetId = humanConfig?.presetId || 'office_girl';
+        const presetObj = PRESET_AVATARS[presetId];
+        if (presetObj) {
+          imageUri = Image.resolveAssetSource(presetObj.imagePath).uri;
+        }
+      }
+
+      if (imageUri) {
+        // Delayed send to ensure WebView JavaScript is loaded
+        const timer = setTimeout(() => {
+          if (webViewRef.current) {
+            webViewRef.current.postMessage(
+              JSON.stringify({ type: 'SET_AVATAR_IMAGE', payload: imageUri })
+            );
+          }
+        }, 500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [avatarMode, humanConfig]);
+
   const handleMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
@@ -423,12 +460,15 @@ export const EVEAvatarWebView: React.FC<Props> = ({
     }
   };
 
+  const currentHtmlContent = avatarMode === 'human' ? HUMAN_EVE_HTML_CONTENT : EVE_HTML_CONTENT;
+
   return (
     <View style={styles.container}>
       <WebView
         ref={webViewRef}
+        key={avatarMode}
         originWhitelist={['*']}
-        source={{ html: EVE_HTML_CONTENT }}
+        source={{ html: currentHtmlContent }}
         style={styles.webview}
         scrollEnabled={false}
         onMessage={handleMessage}
@@ -437,6 +477,25 @@ export const EVEAvatarWebView: React.FC<Props> = ({
         allowFileAccess={true}
         allowUniversalAccessFromFileURLs={true}
         mixedContentMode="always"
+        onLoadEnd={() => {
+          if (avatarMode === 'human') {
+            let imageUri: string | null = null;
+            if (humanConfig?.type === 'custom' && humanConfig.customUri) {
+              imageUri = humanConfig.customUri;
+            } else {
+              const presetId = humanConfig?.presetId || 'office_girl';
+              const presetObj = PRESET_AVATARS[presetId];
+              if (presetObj) {
+                imageUri = Image.resolveAssetSource(presetObj.imagePath).uri;
+              }
+            }
+            if (imageUri && webViewRef.current) {
+              webViewRef.current.postMessage(
+                JSON.stringify({ type: 'SET_AVATAR_IMAGE', payload: imageUri })
+              );
+            }
+          }
+        }}
       />
     </View>
   );

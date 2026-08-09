@@ -20,7 +20,9 @@ import { EVEAvatarWebView } from './src/components/EVEAvatarWebView';
 import { StatusBadge } from './src/components/StatusBadge';
 import { ControlPanel } from './src/components/ControlPanel';
 import { ProfileSettingsModal } from './src/components/ProfileSettingsModal';
+import { AvatarSelectorModal } from './src/components/AvatarSelectorModal';
 import { useEVEState } from './src/hooks/useEVEState';
+import { useAvatarMode } from './src/hooks/useAvatarMode';
 import { n8nService } from './src/services/n8nService';
 import { audioService } from './src/services/audioService';
 import { notificationService } from './src/services/notificationService';
@@ -103,6 +105,8 @@ export default function App() {
 
   const isFidgetBlocked = useCallback(() => isRecordingRef.current, []);
   const { expression, setExpression, handleCanvasTap, isWakingUp } = useEVEState(isFidgetBlocked);
+  const { avatarMode, setMode, humanConfig, updateHumanConfig } = useAvatarMode();
+  const [showAvatarSelector, setShowAvatarSelector] = useState(false);
 
   const [inputMessage, setInputMessage] = useState('');
   const [lastReplyText, setLastReplyText] = useState<string | null>(null);
@@ -714,6 +718,8 @@ export default function App() {
             currentExpression={expression}
             onSelectExpression={setExpression}
             onOpenSettings={() => setShowSettings(true)}
+            onOpenAvatarSelector={() => setShowAvatarSelector(true)}
+            avatarMode={avatarMode}
           />
         )}
 
@@ -721,7 +727,7 @@ export default function App() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* EVE Robot Avatar WebView Canvas */}
+          {/* EVE Robot / Human Avatar WebView Canvas */}
           <TouchableOpacity
             activeOpacity={1}
             onPress={handleCanvasTap}
@@ -730,6 +736,8 @@ export default function App() {
             <EVEAvatarWebView
               expression={expression}
               onTapCanvas={handleCanvasTap}
+              avatarMode={avatarMode}
+              humanConfig={humanConfig}
             />
           </TouchableOpacity>
 
@@ -871,6 +879,16 @@ export default function App() {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+
+        {/* Avatar Selector Modal */}
+        <AvatarSelectorModal
+          visible={showAvatarSelector}
+          onClose={() => setShowAvatarSelector(false)}
+          avatarMode={avatarMode}
+          onSelectMode={setMode}
+          humanConfig={humanConfig}
+          onUpdateHumanConfig={updateHumanConfig}
+        />
 
         {/* Profile Settings Modal */}
         <ProfileSettingsModal

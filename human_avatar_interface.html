@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EVE Realistic Human Avatar Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: radial-gradient(circle at center, #112240 0%, #030712 100%);
+            color: #ffffff;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Avatar Container & Floating Animation */
+        @keyframes subtleFloating {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-8px) rotate(0.5deg); }
+        }
+
+        @keyframes floorGlowPulse {
+            0%, 100% { opacity: 0.7; transform: translateX(-50%) scale(1); }
+            50% { opacity: 0.4; transform: translateX(-50%) scale(0.9); }
+        }
+
+        .avatar-card {
+            position: relative;
+            width: 320px;
+            height: 440px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            animation: subtleFloating 4s ease-in-out infinite;
+            transition: all 0.5s ease;
+        }
+
+        /* Ambient Aura Glow */
+        .ambient-glow {
+            position: absolute;
+            width: 280px;
+            height: 380px;
+            border-radius: 40px;
+            background: radial-gradient(circle, rgba(0, 240, 255, 0.25) 0%, rgba(11, 15, 25, 0) 70%);
+            filter: blur(20px);
+            z-index: 1;
+            transition: all 0.5s ease;
+        }
+
+        .ambient-glow.happy {
+            background: radial-gradient(circle, rgba(255, 200, 50, 0.3) 0%, rgba(11, 15, 25, 0) 70%);
+        }
+
+        .ambient-glow.sleeping {
+            background: radial-gradient(circle, rgba(160, 170, 255, 0.2) 0%, rgba(11, 15, 25, 0) 70%);
+        }
+
+        /* Canvas Frame & Glassmorphism Border */
+        .canvas-wrapper {
+            position: relative;
+            width: 290px;
+            height: 390px;
+            border-radius: 36px;
+            overflow: hidden;
+            z-index: 2;
+            background: rgba(15, 23, 42, 0.6);
+            border: 2px solid rgba(0, 240, 255, 0.3);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 240, 255, 0.15);
+            transition: border-color 0.5s ease, box-shadow 0.5s ease;
+        }
+
+        .canvas-wrapper.sleeping {
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+            filter: brightness(0.7);
+        }
+
+        #avatarCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+        }
+
+        /* Floor Glow Reflection */
+        .floor-shadow {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 220px;
+            height: 18px;
+            background: radial-gradient(ellipse at center, rgba(0, 240, 255, 0.4) 0%, rgba(0, 0, 0, 0) 75%);
+            border-radius: 50%;
+            animation: floorGlowPulse 4s ease-in-out infinite;
+            z-index: 0;
+        }
+
+        /* Overlay Cloud Bubbles for Thinking, Sleeping, Wakeup */
+        .bubble-cloud {
+            position: absolute;
+            top: -20px;
+            right: -10px;
+            padding: 10px 16px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1.5px solid rgba(0, 240, 255, 0.5);
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transform: scale(0.5) translateY(10px);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+        }
+
+        .bubble-cloud.show {
+            opacity: 1;
+            transform: scale(1) translateY(0px);
+        }
+
+        .bubble-cloud .icon {
+            font-size: 22px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00f0ff, #7000ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Status Badge */
+        .status-badge {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 6px 16px;
+            background: rgba(11, 15, 25, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #00f0ff;
+            z-index: 10;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background-color: #00f0ff;
+            box-shadow: 0 0 8px #00f0ff;
+        }
+
+        .status-dot.speaking {
+            background-color: #10b981;
+            box-shadow: 0 0 8px #10b981;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.4); opacity: 0.6; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="avatar-card" id="avatarCard">
+        <!-- Floor Reflection Shadow -->
+        <div class="floor-shadow" id="floorShadow"></div>
+
+        <!-- Ambient Glow -->
+        <div class="ambient-glow" id="ambientGlow"></div>
+
+        <!-- Canvas Wrapper -->
+        <div class="canvas-wrapper" id="canvasWrapper">
+            <canvas id="avatarCanvas" width="580" height="780"></canvas>
+        </div>
+
+        <!-- Overlay Bubbles -->
+        <div class="bubble-cloud" id="bubbleCloud">
+            <span class="icon" id="bubbleIcon">?</span>
+        </div>
+
+        <!-- Status Badge -->
+        <div class="status-badge" id="statusBadge">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">EVE ONLINE</span>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const canvas = document.getElementById('avatarCanvas');
+        const ctx = canvas.getContext('2d');
+        const ambientGlow = document.getElementById('ambientGlow');
+        const canvasWrapper = document.getElementById('canvasWrapper');
+        const bubbleCloud = document.getElementById('bubbleCloud');
+        const bubbleIcon = document.getElementById('bubbleIcon');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+
+        // State variables
+        let currentExpression = 'idle';
+        let isSpeaking = false;
+        let speechVolume = 0;
+        let time = 0;
+        let eyeBlinkFactor = 0;
+        let nextBlinkTime = Date.now() + 3000;
+        let speakTimer = null;
+        let avatarImage = new Image();
+        let imageLoaded = false;
+
+        // Default Avatar Image (Base64 placeholder fallback)
+        const defaultPlaceholder = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='580' height='780' viewBox='0 0 580 780'><rect width='580' height='780' fill='%230f172a'/><circle cx='290' cy='320' r='140' fill='%23334155'/><circle cx='290' cy='280' r='90' fill='%23475569'/><path d='M170,580 Q290,440 410,580 L440,780 L140,780 Z' fill='%23334155'/><text x='290' y='320' font-family='sans-serif' font-size='24' fill='%2300f0ff' text-anchor='middle'>EVE HUMAN AVATAR</text></svg>";
+
+        avatarImage.src = defaultPlaceholder;
+        avatarImage.onload = () => {
+            imageLoaded = true;
+        };
+
+        // Set Avatar Image from URL or Base64
+        function setAvatarImage(src) {
+            if (!src) return;
+            const newImg = new Image();
+            newImg.crossOrigin = "Anonymous";
+            newImg.onload = () => {
+                avatarImage = newImg;
+                imageLoaded = true;
+            };
+            newImg.src = src;
+        }
+
+        // Set State / Expression
+        function setExpression(expr) {
+            currentExpression = expr || 'idle';
+            
+            // Update UI Overlays & Badges
+            ambientGlow.className = 'ambient-glow ' + currentExpression;
+            canvasWrapper.className = 'canvas-wrapper ' + (currentExpression === 'sleeping' ? 'sleeping' : '');
+            
+            if (currentExpression === 'thinking') {
+                bubbleIcon.innerText = '?';
+                bubbleIcon.style.background = 'linear-gradient(135deg, #00f0ff, #3b82f6)';
+                bubbleCloud.classList.add('show');
+            } else if (currentExpression === 'sleeping') {
+                bubbleIcon.innerText = 'Zzz';
+                bubbleIcon.style.background = 'linear-gradient(135deg, #a855f7, #6366f1)';
+                bubbleCloud.classList.add('show');
+            } else if (currentExpression === 'wakeup') {
+                bubbleIcon.innerText = '!';
+                bubbleIcon.style.background = 'linear-gradient(135deg, #f59e0b, #ef4444)';
+                bubbleCloud.classList.add('show');
+                setTimeout(() => {
+                    if (currentExpression === 'wakeup') setExpression('idle');
+                }, 2200);
+            } else {
+                bubbleCloud.classList.remove('show');
+            }
+
+            // Update status text
+            if (currentExpression === 'speaking') {
+                statusText.innerText = 'EVE SPEAKING...';
+                statusDot.className = 'status-dot speaking';
+                isSpeaking = true;
+            } else {
+                statusText.innerText = 'EVE ' + currentExpression.toUpperCase();
+                statusDot.className = 'status-dot';
+                if (currentExpression !== 'speaking') isSpeaking = false;
+            }
+        }
+
+        // Simulate Speech audio wave
+        function simulateSpeech(durationMs) {
+            setExpression('speaking');
+            if (speakTimer) clearInterval(speakTimer);
+            
+            const endTime = Date.now() + (durationMs || 4000);
+            speakTimer = setInterval(() => {
+                if (Date.now() >= endTime) {
+                    clearInterval(speakTimer);
+                    speakTimer = null;
+                    setExpression('idle');
+                } else {
+                    // Random realistic speech volume envelope
+                    speechVolume = 0.3 + Math.random() * 0.7;
+                }
+            }, 120);
+        }
+
+        // Trigger Wakeup animation
+        function triggerWakeUp() {
+            setExpression('wakeup');
+        }
+
+        // Main Animation Render Loop (WebGL / 2.5D Canvas Deformation Engine)
+        function render() {
+            time += 0.04;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const cw = canvas.width;
+            const ch = canvas.height;
+
+            if (imageLoaded) {
+                // Calculate natural movement deformations
+                let headOffsetY = Math.sin(time * 0.8) * 3;
+                let headAngle = Math.sin(time * 0.4) * 0.015;
+
+                if (currentExpression === 'thinking') {
+                    headAngle = 0.06;
+                    headOffsetY = -4;
+                } else if (currentExpression === 'happy') {
+                    headOffsetY = Math.sin(time * 2.5) * 4 - 2;
+                } else if (currentExpression === 'sleeping') {
+                    headOffsetY = 6;
+                    headAngle = 0.03;
+                } else if (currentExpression === 'wakeup') {
+                    headOffsetY = -8;
+                }
+
+                // Handle Eye Blink Timing
+                if (Date.now() > nextBlinkTime) {
+                    eyeBlinkFactor += 0.25;
+                    if (eyeBlinkFactor >= 1) {
+                        eyeBlinkFactor = 0;
+                        nextBlinkTime = Date.now() + 3000 + Math.random() * 3000;
+                    }
+                }
+
+                ctx.save();
+                ctx.translate(cw / 2, ch / 2 + headOffsetY);
+                ctx.rotate(headAngle);
+
+                // Draw Base Image
+                ctx.drawImage(avatarImage, -cw / 2, -ch / 2, cw, ch);
+
+                // Landmark Estimates for Facial Feature Deformation (Center face coordinates)
+                const faceCenterX = 0;
+                const faceCenterY = -ch * 0.05;
+
+                // --- 1. LIP-SYNC & MOUTH DEFORMATION ---
+                let mouthOpen = 0;
+                if (currentExpression === 'speaking') {
+                    mouthOpen = 14 * (speechVolume > 0 ? speechVolume : (0.4 + Math.sin(time * 12) * 0.4));
+                } else if (currentExpression === 'happy') {
+                    mouthOpen = 6;
+                }
+
+                if (mouthOpen > 0) {
+                    const mouthY = faceCenterY + ch * 0.16;
+                    const mouthW = cw * 0.16;
+                    const mouthH = mouthOpen * 1.6;
+
+                    // Sample lip overlay area and morph opening shape
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.ellipse(mouthY > 0 ? faceCenterX : 0, mouthY, mouthW / 2, Math.max(3, mouthH / 2), 0, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(120, 20, 40, 0.85)';
+                    ctx.fill();
+
+                    // Inner teeth accent line
+                    ctx.beginPath();
+                    ctx.rect(faceCenterX - mouthW * 0.35, mouthY - mouthH * 0.3, mouthW * 0.7, mouthH * 0.35);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                // --- 2. EYE BLINKING OVERLAY ---
+                let isBlinking = eyeBlinkFactor > 0.5 || currentExpression === 'sleeping';
+                if (isBlinking) {
+                    const eyeY = faceCenterY - ch * 0.04;
+                    const eyeDist = cw * 0.14;
+                    const eyeW = cw * 0.10;
+                    const eyeH = ch * 0.025;
+
+                    ctx.fillStyle = 'rgba(30, 25, 35, 0.95)';
+                    // Left Eye Cover
+                    ctx.beginPath();
+                    ctx.ellipse(faceCenterX - eyeDist, eyeY, eyeW / 2, eyeH, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Right Eye Cover
+                    ctx.beginPath();
+                    ctx.ellipse(faceCenterX + eyeDist, eyeY, eyeW / 2, eyeH, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        // Initialize Render Loop
+        render();
+
+        // --- REACT NATIVE WEBVIEW MESSAGE BRIDGE ---
+        function handleRNMessage(event) {
+            try {
+                const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                if (!data) return;
+
+                if (data.type === 'SET_EXPRESSION') {
+                    setExpression(data.payload);
+                } else if (data.type === 'SET_AVATAR_IMAGE') {
+                    setAvatarImage(data.payload);
+                } else if (data.type === 'SPEAK_SIMULATION') {
+                    simulateSpeech(data.payload || 4500);
+                } else if (data.type === 'WAKEUP') {
+                    triggerWakeUp();
+                } else if (data.type === 'SET_AUDIO_AMPLITUDE') {
+                    speechVolume = Math.min(1, Math.max(0, data.payload || 0));
+                }
+            } catch (e) {
+                console.error("RN Message parsing error", e);
+            }
+        }
+
+        window.addEventListener('message', handleRNMessage);
+        document.addEventListener('message', handleRNMessage);
+
+        // Tap Canvas Event to Post Message back to React Native
+        document.body.addEventListener('click', () => {
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'CANVAS_TAP',
+                    currentExpression: currentExpression
+                }));
+            }
+        });
+    </script>
+</body>
+</html>
