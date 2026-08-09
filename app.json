@@ -49,6 +49,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "updates": {
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_ERROR_RECOVERY"
+    },
     "plugins": [
       [
         "expo-notifications",
