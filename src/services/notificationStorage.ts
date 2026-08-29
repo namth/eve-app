@@ -2,87 +2,79 @@ import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 import { PushNotificationPayload } from '../types/api';
 import { PersonProfile } from '../types/personProfile';
+import { stripMarkdown } from '../utils/markdownUtils';
 
-const QUEUE_STORAGE_KEY = '@eve_pending_notification_queue';
+const LEGACY_STORAGE_KEY = '@eve_pending_notification_queue';
 
+// Hàng đợi thông báo phiên làm việc (In-Memory Session Queue)
+// Nguồn dữ liệu duy nhất đến từ khay thông báo thật (Presented Notifications) trên máy
 let memoryQueue: PushNotificationPayload[] = [];
 
-// Storage helpers với Expo FileSystem cho Native + localStorage cho Web
-async function storageGetItem(key: string): Promise<string | null> {
+/**
+ * Xóa sạch file lưu trữ đĩa cứng cũ nếu còn sót lại từ các phiên bản trước
+ */
+async function purgeLegacyDiskStorage(): Promise<void> {
   if (Platform.OS === 'web') {
     if (typeof window !== 'undefined' && window.localStorage) {
-      return window.localStorage.getItem(key);
-    }
-    return null;
-  }
-
-  try {
-    const filename = key.replace(/[^a-zA-Z0-9_-]/g, '_') + '.json';
-    const filePath = `${FileSystem.documentDirectory}${filename}`;
-    const info = await FileSystem.getInfoAsync(filePath);
-    if (info.exists) {
-      return await FileSystem.readAsStringAsync(filePath);
-    }
-  } catch (e) {
-    console.warn('[Storage] FileSystem.getItem error:', e);
-  }
-  return null;
-}
-
-async function storageSetItem(key: string, value: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem(key, value);
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
     }
     return;
   }
 
   try {
-    const filename = key.replace(/[^a-zA-Z0-9_-]/g, '_') + '.json';
-    const filePath = `${FileSystem.documentDirectory}${filename}`;
-    await FileSystem.writeAsStringAsync(filePath, value);
-  } catch (e) {
-    console.warn('[Storage] FileSystem.setItem error:', e);
-  }
-}
-
-async function storageRemoveItem(key: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.removeItem(key);
-    }
-    return;
-  }
-
-  try {
-    const filename = key.replace(/[^a-zA-Z0-9_-]/g, '_') + '.json';
+    const filename = LEGACY_STORAGE_KEY.replace(/[^a-zA-Z0-9_-]/g, '_') + '.json';
     const filePath = `${FileSystem.documentDirectory}${filename}`;
     const info = await FileSystem.getInfoAsync(filePath);
     if (info.exists) {
       await FileSystem.deleteAsync(filePath, { idempotent: true });
+      console.log('[NotificationStorage] Purged legacy disk queue file');
     }
   } catch (e) {
-    console.warn('[Storage] FileSystem.removeItem error:', e);
+    console.warn('[NotificationStorage] purgeLegacyDiskStorage error:', e);
   }
 }
 
 export const notificationStorage = {
   /**
-   * Thêm thông báo mới vào hàng đợi (Queue)
+   * Đồng bộ/Ghi đè toàn bộ hàng đợi thông báo hiện tại (không tích trữ)
+   */
+  setNotificationQueue(list: PushNotificationPayload[]): PushNotificationPayload[] {
+    const uniqueItems: PushNotificationPayload[] = [];
+    for (const item of list) {
+      const text = (item.text || item.body || item.message || '').trim();
+      if (!text) continue;
+      const exists = uniqueItems.some((u) => {
+        const uText = (u.text || u.body || u.message || '').trim();
+        return uText === text;
+      });
+      if (!exists) {
+        uniqueItems.push(item);
+      }
+    }
+    memoryQueue = uniqueItems;
+    console.log('[NotificationStorage] Set active queue count:', memoryQueue.length);
+    return [...memoryQueue];
+  },
+
+  /**
+   * Thêm thông báo mới vào hàng đợi bộ nhớ hiện tại
    */
   async addNotificationToQueue(payload: PushNotificationPayload): Promise<PushNotificationPayload[]> {
     try {
-      // Tránh lặp lại cùng 1 thông báo nếu bị nhận trùng lặp trong thời gian ngắn
-      const exists = memoryQueue.some(
-        (item) => (item.text || item.body) === (payload.text || payload.body)
-      );
+      const targetText = (payload.text || payload.body || payload.message || '').trim();
+      if (!targetText) return [...memoryQueue];
+
+      // Tránh lặp lại cùng 1 thông báo nếu bị nhận trùng lặp trong phiên
+      const exists = memoryQueue.some((item) => {
+        const itemText = (item.text || item.body || item.message || '').trim();
+        return itemText === targetText;
+      });
 
       if (!exists) {
         memoryQueue.push(payload);
+        console.log('[NotificationStorage] Added notification to active queue. Total:', memoryQueue.length);
       }
 
-      await storageSetItem(QUEUE_STORAGE_KEY, JSON.stringify(memoryQueue));
-      console.log('[NotificationStorage] Queue updated in storage. Total:', memoryQueue.length);
       return [...memoryQueue];
     } catch (err) {
       console.warn('[NotificationStorage] Error adding to queue:', err);
@@ -91,28 +83,10 @@ export const notificationStorage = {
   },
 
   /**
-   * Lấy toàn bộ hàng đợi thông báo đang chờ xử lý
+   * Lấy toàn bộ hàng đợi thông báo đang chờ xử lý trong phiên
    */
   async getNotificationQueue(): Promise<PushNotificationPayload[]> {
-    try {
-      if (memoryQueue.length > 0) {
-        return [...memoryQueue];
-      }
-
-      const jsonVal = await storageGetItem(QUEUE_STORAGE_KEY);
-      if (jsonVal) {
-        const list = JSON.parse(jsonVal) as PushNotificationPayload[];
-        if (Array.isArray(list)) {
-          memoryQueue = list;
-          console.log('[NotificationStorage] Retrieved queue from storage. Total:', list.length);
-          return [...memoryQueue];
-        }
-      }
-      return [...memoryQueue];
-    } catch (err) {
-      console.warn('[NotificationStorage] Error reading queue:', err);
-      return [...memoryQueue];
-    }
+    return [...memoryQueue];
   },
 
   /**
@@ -121,11 +95,18 @@ export const notificationStorage = {
   async clearNotificationQueue(): Promise<void> {
     try {
       memoryQueue = [];
-      await storageRemoveItem(QUEUE_STORAGE_KEY);
-      console.log('[NotificationStorage] Cleared notification queue from storage');
+      await purgeLegacyDiskStorage();
+      console.log('[NotificationStorage] Cleared active notification queue');
     } catch (err) {
       console.warn('[NotificationStorage] Error clearing queue:', err);
     }
+  },
+
+  /**
+   * Dọn sạch file lưu trữ đĩa cứng cũ
+   */
+  async purgeLegacyStorage(): Promise<void> {
+    await purgeLegacyDiskStorage();
   },
 
   /**
@@ -194,15 +175,16 @@ export const notificationStorage = {
 
     if (n === 1) {
       const randomOpening = singleOpenings[Math.floor(Math.random() * singleOpenings.length)];
-      const bodyContent =
+      const rawContent =
         notifications[0].text ||
         notifications[0].body ||
         notifications[0].message ||
         'Có thông báo mới.';
+      const bodyContent = stripMarkdown(rawContent);
       const speechText = `${randomOpening} ${bodyContent} ${randomClosing}`;
       return {
         speechText,
-        displayTitle: notifications[0].title || 'EVE AI Assistant',
+        displayTitle: stripMarkdown(notifications[0].title || 'EVE AI Assistant'),
         targetEmotion,
       };
     }
@@ -211,7 +193,8 @@ export const notificationStorage = {
     const randomOpening = multiOpenings[Math.floor(Math.random() * multiOpenings.length)];
     const listSpeechParts = notifications.map((item, idx) => {
       const countLabel = numberWords[idx] || `${idx + 1}`;
-      const itemText = item.text || item.body || item.message || 'Nội dung thông báo.';
+      const rawText = item.text || item.body || item.message || 'Nội dung thông báo.';
+      const itemText = stripMarkdown(rawText);
       return `${countLabel} là: ${itemText}.`;
     });
 

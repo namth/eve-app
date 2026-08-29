@@ -33,6 +33,7 @@ import { pronunciationDictionaryService } from './src/services/pronunciationDict
 import welcomeGreetings from './src/assets/data/welcome_greetings.json';
 import { ChatWebhookResponse, PushNotificationPayload } from './src/types/api';
 import { PersonProfile } from './src/types/personProfile';
+import { stripMarkdown } from './src/utils/markdownUtils';
 
 const PERSIST_LAST_USER_KEY = '@eve_setting_persist_last_user';
 
@@ -246,6 +247,7 @@ export default function App() {
             console.log('[App] EVE completely finished reading queued notifications to Admin!');
             setExpression(targetEmotion);
             await notificationStorage.clearNotificationQueue();
+            await notificationService.dismissAllNotifications();
             setActiveNotificationQueue([]);
             setUnreadCount(0);
             isProcessingNotificationRef.current = false;
@@ -362,6 +364,7 @@ export default function App() {
 
     // 3. Khởi tạo App & Phục hồi Người dùng cuối nếu bật Cài đặt
     (async () => {
+      await notificationStorage.purgeLegacyStorage();
       await notificationService.getInitialNotification();
       await peopleDatabaseService.getPeopleList();
       const shouldPersist = await getSettingPersistLastUser();
@@ -738,7 +741,7 @@ export default function App() {
             <View style={styles.notifCard}>
               <View style={styles.notifCardHeader}>
                 <Text style={styles.notifCardTitle}>
-                  🔔 {activeNotificationQueue.length > 1 ? `${activeNotificationQueue.length} Thông báo mới` : (activeNotificationQueue[0].title || 'Thông báo mới')}
+                  🔔 {activeNotificationQueue.length > 1 ? `${activeNotificationQueue.length} Thông báo mới` : stripMarkdown(activeNotificationQueue[0].title || 'Thông báo mới')}
                 </Text>
                 <TouchableOpacity
                   onPress={() => setActiveNotificationQueue([])}
@@ -751,16 +754,18 @@ export default function App() {
 
               {activeNotificationQueue.length === 1 ? (
                 <Text style={styles.notifCardBody}>
-                  "{activeNotificationQueue[0].text ||
+                  "{stripMarkdown(
+                    activeNotificationQueue[0].text ||
                     activeNotificationQueue[0].body ||
                     activeNotificationQueue[0].message ||
-                    'Có thông báo mới từ hệ thống.'}"
+                    'Có thông báo mới từ hệ thống.'
+                  )}"
                 </Text>
               ) : (
                 <View style={styles.notifListContainer}>
                   {activeNotificationQueue.map((item, index) => (
                     <Text key={index} style={styles.notifListItem}>
-                      <Text style={styles.notifItemNumber}>{index + 1}.</Text> {item.text || item.body || item.message}
+                      <Text style={styles.notifItemNumber}>{index + 1}.</Text> {stripMarkdown(item.text || item.body || item.message || '')}
                     </Text>
                   ))}
                 </View>

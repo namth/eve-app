@@ -1,4 +1,5 @@
 import { pronunciationDictionaryService } from './pronunciationDictionaryService';
+import { stripMarkdown } from '../utils/markdownUtils';
 
 /**
  * Service Chuẩn hóa Văn bản cho Giọng đọc TTS (Text-to-Speech Normalizer)
@@ -144,8 +145,11 @@ export const ttsNormalizerService = {
   async normalizeForTTS(text: string): Promise<string> {
     if (!text) return '';
 
+    // 0. Loại bỏ toàn bộ định dạng cú pháp Markdown (*, #, _, `, >, [, ], ~, |...)
+    const cleanText = stripMarkdown(text);
+
     // 1. Ưu tiên hàng đầu: Áp dụng từ điển phát âm học được
-    let processedText = await pronunciationDictionaryService.applyLearnedDictionary(text);
+    let processedText = await pronunciationDictionaryService.applyLearnedDictionary(cleanText);
 
     // 2. Tiếp theo: Quét tự động các URL / Tên miền chưa nằm trong từ điển học được
     const urlRegex = /(?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:\/[^\s]*)?/gi;

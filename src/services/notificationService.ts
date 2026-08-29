@@ -104,25 +104,81 @@ export const notificationService = {
   },
 
   /**
+   * Đồng bộ toàn bộ thông báo đang hiển thị trên thanh thông báo (Notification Bar) của thiết bị.
+   * Giúp gom tất cả các thông báo chưa đọc vào hàng đợi mà không lưu trữ vĩnh viễn trên đĩa.
+   */
+  async syncPresentedNotifications(tappedPayload?: PushNotificationPayload | null): Promise<PushNotificationPayload[]> {
+    try {
+      const presented = await Notifications.getPresentedNotificationsAsync();
+      const activeList: PushNotificationPayload[] = [];
+
+      // 1. Nếu có thông báo vừa bấm mở app, đưa lên đầu danh sách
+      if (tappedPayload) {
+        activeList.push(tappedPayload);
+      }
+
+      // 2. Gom toàn bộ thông báo đang còn treo trên khay thông báo của máy
+      if (presented && presented.length > 0) {
+        console.log(`[NotificationService] Found ${presented.length} presented notification(s) on device tray.`);
+        for (const item of presented) {
+          const content = item.request?.content;
+          if (!content) continue;
+          const rawData = content.data || {};
+          const payload: PushNotificationPayload = {
+            title: content.title || 'EVE AI Assistant',
+            body: content.body || 'Có thông báo mới từ hệ thống.',
+            text: (rawData as any)?.text || content.body || content.title || 'Có thông báo mới từ hệ thống.',
+            ...(rawData as any),
+          };
+          activeList.push(payload);
+        }
+      }
+
+      // 3. Cập nhật hàng đợi phiên làm việc (loại bỏ trùng lặp nếu cùng nội dung)
+      const currentQueue = notificationStorage.setNotificationQueue(activeList);
+      return currentQueue;
+    } catch (err) {
+      console.warn('[NotificationService] Error syncing presented notifications:', err);
+      return notificationStorage.getNotificationQueue();
+    }
+  },
+
+  /**
+   * Dọn sạch toàn bộ thông báo của EVE trên thanh trạng thái sau khi đã đọc xong
+   */
+  async dismissAllNotifications(): Promise<void> {
+    try {
+      await Notifications.dismissAllNotificationsAsync();
+      console.log('[NotificationService] Dismissed all presented notifications from device tray.');
+    } catch (err) {
+      console.warn('[NotificationService] Error dismissing notifications:', err);
+    }
+  },
+
+  /**
    * Lấy thông báo ban đầu khi mở App từ trạng thái đóng hoàn toàn (Cold Start)
+   * Quét cả thông báo được bấm lẫn toàn bộ thông báo còn lại đang treo trên máy
    */
   async getInitialNotification(): Promise<PushNotificationPayload | null> {
     try {
+      // 1. Quét thông báo cụ thể mà người dùng vừa bấm (nếu có)
       const response = await Notifications.getLastNotificationResponseAsync();
-      if (!response) return null;
+      let initialData: PushNotificationPayload | null = null;
+      if (response) {
+        const content = response.notification?.request?.content;
+        const rawData = content?.data || {};
+        initialData = {
+          title: content?.title || 'EVE AI Assistant',
+          body: content?.body || 'Có thông báo mới từ hệ thống.',
+          text: (rawData as any)?.text || content?.body || content?.title || 'Có thông báo mới từ hệ thống.',
+          ...(rawData as any),
+        } as PushNotificationPayload;
+      }
 
-      const content = response.notification?.request?.content;
-      const rawData = content?.data || {};
-      const data = {
-        title: content?.title || 'EVE AI Assistant',
-        body: content?.body || 'Có thông báo mới từ hệ thống.',
-        text: (rawData as any)?.text || content?.body || content?.title || 'Có thông báo mới từ hệ thống.',
-        ...(rawData as any),
-      } as PushNotificationPayload;
+      // 2. Quét TẤT CẢ các thông báo còn lại đang hiển thị trên thanh Notification của máy
+      await this.syncPresentedNotifications(initialData);
 
-      // Thêm vào hàng đợi đĩa cứng để không bị mất
-      await notificationStorage.addNotificationToQueue(data);
-      return data;
+      return initialData;
     } catch (e) {
       console.warn('[NotificationService] Error getting initial notification:', e);
       return null;
@@ -170,12 +226,14 @@ export const notificationService = {
         const data = {
           title: content?.title || 'EVE AI Assistant',
           body: content?.body || 'Có thông báo mới từ hệ thống.',
+          text: (rawData as any)?.text || content?.body || content?.title || 'Có thông báo mới từ hệ thống.',
           ...rawData,
         } as unknown as PushNotificationPayload;
         console.log('[NotificationService] Background Push Notification tapped:', data);
 
-        // Thêm vào hàng đợi đĩa cứng trước khi mở màn hình
-        await notificationStorage.addNotificationToQueue(data);
+        // Quét và nạp tất cả thông báo hiện có trên máy (bao gồm cả thông báo vừa bấm)
+        await this.syncPresentedNotifications(data);
+
         if (data && onNotificationTapped) {
           onNotificationTapped(data);
         }
