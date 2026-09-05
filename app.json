@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "EVE Voice AI",
-    "slug": "eve-app",
+    "slug": "inova-tech",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -55,7 +55,7 @@
         }
       ],
       [
-        "expo-av",
+        "expo-audio",
         {
           "microphonePermission": "Cho phép EVE nghe giọng nói của bạn để thực hiện các câu lệnh."
         }
@@ -63,7 +63,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "41db366a-19e2-4418-9906-0bc40574baa9"
+        "projectId": "d622bbd4-a25a-4b5f-9d97-71efd73b1fc3"
       }
     }
   }

@@ -5,7 +5,7 @@ type MessageHandler = (data: PushNotificationPayload) => void;
 class WebSocketService {
   private socket: WebSocket | null = null;
   private messageListeners: MessageHandler[] = [];
-  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private isConnected = false;
 
   /**

@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // Các cụm từ rác/ảo giác của Whisper cần bóc tách khỏi văn bản (Sanitize)
 const HALLUCINATION_PHRASES = [
@@ -39,24 +40,22 @@ export const sttService = {
     const groqKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.EXPO_PUBLIC_OPENAI_API_KEY;
     console.log('[sttService] Starting Speech-to-Text via Groq Whisper for audio:', audioUri);
 
+    if (!groqKey) {
+      console.warn('[sttService] No Groq API Key found in EXPO_PUBLIC_GROQ_API_KEY');
+      return null;
+    }
+
     try {
-      const formData = new FormData();
-      const fileType = 'audio/m4a';
-      const fileName = 'recording.m4a';
+      let rawText = '';
+      const startTime = Date.now();
 
-      // @ts-ignore
-      formData.append('file', {
-        uri: audioUri,
-        name: fileName,
-        type: fileType,
-      });
-
-      // 1. Nhận diện giọng nói bằng Groq Whisper (Whisper Large V3 Turbo - LPU hardware ~100ms)
-      if (groqKey) {
+      if (Platform.OS === 'web') {
+        const audioBlob = await fetch(audioUri).then((r) => r.blob());
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'recording.m4a');
         formData.append('model', 'whisper-large-v3-turbo');
         formData.append('language', 'vi');
 
-        const startTime = Date.now();
         const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
           method: 'POST',
           headers: {
@@ -65,38 +64,61 @@ export const sttService = {
           body: formData,
         });
 
-        const duration = Date.now() - startTime;
-
         if (response.ok) {
           const result = await response.json();
-          const rawText = result.text ? result.text.trim() : '';
-
-          console.log(`[sttService] Groq Whisper SUCCESS in ${duration}ms! Raw transcribed text: "${rawText}"`);
-
-          if (!rawText) return null;
-
-          // 2. BÓC TÁCH & BĂM BỎ CÁC CỤM TỪ ẢO GIÁC RÁC CỦA WHISPER (GIỮ LẠI LỜI NÓI THẬT CỦA USER)
-          const sanitizedText = sanitizeWhisperText(rawText);
-
-          if (!sanitizedText) {
-            console.log(`[sttService] Discarded pure Whisper silence hallucination: "${rawText}"`);
-            return null;
-          }
-
-          if (sanitizedText !== rawText) {
-            console.log(`[sttService] Sanitized Whisper hallucination! Stripped noise. Clean text: "${sanitizedText}"`);
-          }
-
-          return sanitizedText;
+          rawText = result.text ? result.text.trim() : '';
         } else {
           const errText = await response.text();
           console.warn(`[sttService] Groq Whisper API returned HTTP ${response.status}:`, errText);
+          return null;
         }
       } else {
-        console.warn('[sttService] No Groq API Key found in EXPO_PUBLIC_GROQ_API_KEY');
+        // Native (Android / iOS): Sử dụng FileSystem.uploadAsync để tương thích 100% với Expo SDK 57 (tránh lỗi Unsupported FormDataPart)
+        const uploadResult = await FileSystem.uploadAsync(
+          'https://api.groq.com/openai/v1/audio/transcriptions',
+          audioUri,
+          {
+            httpMethod: 'POST',
+            uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+            fieldName: 'file',
+            mimeType: 'audio/m4a',
+            parameters: {
+              model: 'whisper-large-v3-turbo',
+              language: 'vi',
+            },
+            headers: {
+              Authorization: `Bearer ${groqKey}`,
+            },
+          }
+        );
+
+        if (uploadResult.status >= 200 && uploadResult.status < 300) {
+          const result = JSON.parse(uploadResult.body);
+          rawText = result.text ? result.text.trim() : '';
+        } else {
+          console.warn(`[sttService] Groq Whisper API returned HTTP ${uploadResult.status}:`, uploadResult.body);
+          return null;
+        }
       }
 
-      return null;
+      const duration = Date.now() - startTime;
+      console.log(`[sttService] Groq Whisper SUCCESS in ${duration}ms! Raw transcribed text: "${rawText}"`);
+
+      if (!rawText) return null;
+
+      // 2. BÓC TÁCH & BĂM BỎ CÁC CỤM TỪ ẢO GIÁC RÁC CỦA WHISPER (GIỮ LẠI LỜI NÓI THẬT CỦA USER)
+      const sanitizedText = sanitizeWhisperText(rawText);
+
+      if (!sanitizedText) {
+        console.log(`[sttService] Discarded pure Whisper silence hallucination: "${rawText}"`);
+        return null;
+      }
+
+      if (sanitizedText !== rawText) {
+        console.log(`[sttService] Sanitized Whisper hallucination! Stripped noise. Clean text: "${sanitizedText}"`);
+      }
+
+      return sanitizedText;
     } catch (error) {
       console.error('[sttService] Transcribe error:', error);
       return null;

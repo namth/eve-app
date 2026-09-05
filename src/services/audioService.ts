@@ -1,20 +1,28 @@
-import { Audio } from 'expo-av';
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  requestRecordingPermissionsAsync,
+  AudioModule,
+  RecordingPresets,
+  type AudioPlayer,
+  type AudioRecorder,
+} from 'expo-audio';
 import * as Speech from 'expo-speech';
 import { PermissionsAndroid, Platform } from 'react-native';
 import { ttsNormalizerService } from './ttsNormalizerService';
 
 class AudioService {
-  private soundObject: Audio.Sound | null = null;
-  private recordingObject: Audio.Recording | null = null;
+  private audioPlayer: AudioPlayer | null = null;
+  private audioRecorder: AudioRecorder | null = null;
+  private recordingInterval: any = null;
   private isPlayingTTSStatus: boolean = false;
   private speechDetectedFlag: boolean = false;
 
   constructor() {
-    Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
+    setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
+      interruptionMode: 'duckOthers',
     }).catch((err) => console.log('[AudioService] Init audio mode error:', err));
   }
 
@@ -40,25 +48,25 @@ class AudioService {
 
       const handlePlaybackEnd = () => {
         this.isPlayingTTSStatus = false;
-        this.soundObject?.unloadAsync();
-        this.soundObject = null;
+        try {
+          this.audioPlayer?.remove();
+        } catch (e) {}
+        this.audioPlayer = null;
         if (onEnd) onEnd();
       };
 
       // 1. Ưu tiên 1: Audio URL từ n8n (ElevenLabs / OpenAI / Edge-TTS)
       if (audioUrl) {
         console.log('[AudioService] Playing audio stream from n8n URL:', audioUrl);
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: audioUrl },
-          { shouldPlay: true }
-        );
-        this.soundObject = sound;
+        const player = createAudioPlayer({ uri: audioUrl });
+        this.audioPlayer = player;
 
-        sound.setOnPlaybackStatusUpdate((status) => {
-          if (status.isLoaded && status.didJustFinish) {
+        player.addListener('playbackStatusUpdate', (status) => {
+          if (status.didJustFinish) {
             handlePlaybackEnd();
           }
         });
+        player.play();
         return;
       }
 
@@ -70,17 +78,19 @@ class AudioService {
         : `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=vi&client=tw-ob`;
 
       console.log('[AudioService] Playing AI Voice Stream for speechText:', speechText);
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: ttsStreamUrl },
-        { shouldPlay: true, rate: 1.15, shouldCorrectPitch: true }
-      );
-      this.soundObject = sound;
+      const player = createAudioPlayer({ uri: ttsStreamUrl });
+      this.audioPlayer = player;
+      try {
+        player.setPlaybackRate(1.15);
+        player.shouldCorrectPitch = true;
+      } catch (e) {}
 
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
+      player.addListener('playbackStatusUpdate', (status) => {
+        if (status.didJustFinish) {
           handlePlaybackEnd();
         }
       });
+      player.play();
     } catch (error) {
       console.warn('[AudioService] Neural stream error, falling back to Native TTS:', error);
       const speechText = await ttsNormalizerService.normalizeForTTS(text);
@@ -107,12 +117,12 @@ class AudioService {
   async stopAudio(): Promise<void> {
     this.isPlayingTTSStatus = false;
     Speech.stop();
-    if (this.soundObject) {
+    if (this.audioPlayer) {
       try {
-        await this.soundObject.stopAsync();
-        await this.soundObject.unloadAsync();
+        this.audioPlayer.pause();
+        this.audioPlayer.remove();
       } catch (e) {}
-      this.soundObject = null;
+      this.audioPlayer = null;
     }
   }
 
@@ -126,14 +136,18 @@ class AudioService {
     checkIsLookingAtEVE?: () => boolean;
   }): Promise<boolean> {
     try {
-      if (this.recordingObject) {
+      if (this.recordingInterval) {
+        clearInterval(this.recordingInterval);
+        this.recordingInterval = null;
+      }
+      if (this.audioRecorder) {
         try {
-          await this.recordingObject.stopAndUnloadAsync();
+          await this.audioRecorder.stop();
         } catch (e) {}
-        this.recordingObject = null;
+        this.audioRecorder = null;
       }
 
-      const permission = await Audio.requestPermissionsAsync();
+      const permission = await requestRecordingPermissionsAsync();
       if (Platform.OS === 'android') {
         try {
           await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
@@ -145,26 +159,23 @@ class AudioService {
         return false;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        interruptionMode: 'duckOthers',
       });
 
       // Cấu hình ghi âm bật Metering đo âm lượng dB thời gian thực
       const recordingOptions = {
-        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        ...RecordingPresets.HIGH_QUALITY,
         isMeteringEnabled: true,
       };
 
-      const { recording } = await Audio.Recording.createAsync(
-        recordingOptions,
-        undefined,
-        100 // Cập nhật metering mỗi 100ms
-      );
+      const recorder: AudioRecorder = new AudioModule.AudioRecorder(recordingOptions);
+      await recorder.prepareToRecordAsync();
+      recorder.record();
 
-      this.recordingObject = recording;
+      this.audioRecorder = recorder;
       this.speechDetectedFlag = false;
 
       const silenceThreshold = options?.silenceThresholdMs || 800; // 800ms
@@ -181,9 +192,10 @@ class AudioService {
       let speechStartThreshold = -32; // Ngưỡng mặc định bắt đầu nói
       let silenceEndThreshold = -42;  // Ngưỡng mặc định ngắt im lặng
 
-      recording.setOnRecordingStatusUpdate((status) => {
-        if (!status.isRecording || isTriggeredEnd) return;
+      this.recordingInterval = setInterval(() => {
+        if (!recorder.isRecording || isTriggeredEnd) return;
 
+        const status = recorder.getStatus();
         const metering = status.metering ?? -160; // dB value
 
         // 1. ĐO TIẾNG ỒN NỀN TRONG 300MS ĐẦU TIÊN
@@ -236,6 +248,10 @@ class AudioService {
             if (silenceDuration >= silenceThreshold) {
               console.log(`[AudioService] VAD: Speech end detected after ${silenceDuration}ms silence! Auto-stopping...`);
               isTriggeredEnd = true;
+              if (this.recordingInterval) {
+                clearInterval(this.recordingInterval);
+                this.recordingInterval = null;
+              }
               if (options?.onSpeechEnd) {
                 options.onSpeechEnd();
               }
@@ -244,27 +260,34 @@ class AudioService {
         }
 
         // 5. MAX SPEECH HARD TIMEOUT (8 GIÂY TOÀN BỘ CÂU NÓI):
-        // Nếu ở môi trường quá ồn khiến tiếng ồn kéo dài quá 8 giây sau khi đã nói, tự động ngắt gửi STT
         if (hasStartedSpeaking && speechStartedTime && !isTriggeredEnd) {
           const speechDuration = now - speechStartedTime;
           if (speechDuration >= 8000) {
             console.log(`[AudioService] VAD: Max speech duration reached (${speechDuration}ms >= 8000ms). Auto-stopping for STT...`);
             isTriggeredEnd = true;
+            if (this.recordingInterval) {
+              clearInterval(this.recordingInterval);
+              this.recordingInterval = null;
+            }
             if (options?.onSpeechEnd) {
               options.onSpeechEnd();
             }
           }
         }
-      });
+      }, 100);
 
       return true;
     } catch (err) {
       console.error('[AudioService] Start recording error:', err);
-      if (this.recordingObject) {
+      if (this.recordingInterval) {
+        clearInterval(this.recordingInterval);
+        this.recordingInterval = null;
+      }
+      if (this.audioRecorder) {
         try {
-          await this.recordingObject.stopAndUnloadAsync();
+          await this.audioRecorder.stop();
         } catch (e) {}
-        this.recordingObject = null;
+        this.audioRecorder = null;
       }
       return false;
     }
@@ -274,18 +297,23 @@ class AudioService {
    * Dừng ghi âm và trả về URI
    */
   async stopRecording(): Promise<string | null> {
-    if (!this.recordingObject) return null;
+    if (this.recordingInterval) {
+      clearInterval(this.recordingInterval);
+      this.recordingInterval = null;
+    }
+    if (!this.audioRecorder) return null;
     try {
-      await this.recordingObject.stopAndUnloadAsync();
-      const uri = this.recordingObject.getURI();
-      this.recordingObject = null;
+      await this.audioRecorder.stop();
+      const uri = this.audioRecorder.uri;
+      this.audioRecorder = null;
       return uri;
     } catch (err) {
       console.error('[AudioService] Stop recording error:', err);
-      this.recordingObject = null;
+      this.audioRecorder = null;
       return null;
     }
   }
 }
 
 export const audioService = new AudioService();
+

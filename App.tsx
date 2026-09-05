@@ -14,7 +14,7 @@ import {
   Platform,
   Switch,
 } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { EVEAvatarWebView } from './src/components/EVEAvatarWebView';
 import { StatusBadge } from './src/components/StatusBadge';

@@ -16,9 +16,9 @@ const getRandomExpression = (): EVEExpression =>
 export const useEVEState = (isFidgetBlocked?: () => boolean) => {
   const [expression, setExpressionState] = useState<EVEExpression>('idle');
   const [isWakingUp, setIsWakingUp] = useState(false);
-  const sleepTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const fidgetTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const fidgetReturnRef = useRef<NodeJS.Timeout | null>(null);
+  const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fidgetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fidgetReturnRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
    * Lên lịch 1 fidget ngẫu nhiên tiếp theo (interval ngẫu nhiên 3–9s)
