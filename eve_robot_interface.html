@@ -182,6 +182,66 @@
             animation: giggle 0.38s ease-in-out infinite !important;
         }
 
+        /* Diễn hoạt vẫy tay trái giơ chéo tự nhiên ra ngoài thân */
+        @keyframes waveLeftSky {
+            0%, 100% { transform: rotate(-200deg) translateY(2px) translateX(-6px); }
+            50% { transform: rotate(-180deg) translateY(2px) translateX(-6px); }
+        }
+        .wave-left-anim {
+            animation: waveLeftSky 0.65s ease-in-out infinite !important;
+        }
+
+        /* Diễn hoạt vẫy tay phải giơ chéo tự nhiên ra ngoài thân */
+        @keyframes waveRightSky {
+            0%, 100% { transform: rotate(200deg) translateY(2px) translateX(6px); }
+            50% { transform: rotate(180deg) translateY(2px) translateX(6px); }
+        }
+        .wave-right-anim {
+            animation: waveRightSky 0.65s ease-in-out infinite !important;
+        }
+
+        /* Hiệu ứng xoay tròn giả 3D: Visor quay vòng quanh đầu, bo sát viền ngoài */
+        @keyframes spinVisor3D {
+            0% { transform: translateX(0px) scaleX(1); opacity: 1; }
+            25% { transform: translateX(45px) scaleX(0.72); opacity: 1; }
+            42% { transform: translateX(82px) scaleX(0.22); opacity: 0; }
+            50% { transform: translateX(0px) scaleX(0); opacity: 0; }
+            58% { transform: translateX(-82px) scaleX(0.22); opacity: 0; }
+            75% { transform: translateX(-45px) scaleX(0.72); opacity: 1; }
+            100% { transform: translateX(0px) scaleX(1); opacity: 1; }
+        }
+        .spin-visor-anim {
+            animation: spinVisor3D 2.6s cubic-bezier(0.38, 0, 0.22, 1) !important;
+        }
+
+        /* Tay trái quay giả 3D quanh thân giữ chuẩn cao độ vai không bị tụt */
+        @keyframes spinLeftArm3D {
+            0% { transform: rotate(-10deg) translateY(18px) translateX(0px) scale(1); z-index: 25; }
+            25% { transform: rotate(-3deg) translateY(16px) translateX(100px) scale(1.05); z-index: 25; }
+            49% { transform: rotate(10deg) translateY(-14px) translateX(200px) scale(1); z-index: 25; }
+            50% { transform: rotate(10deg) translateY(0px) translateX(200px) scale(0.96); z-index: 0; }
+            75% { transform: rotate(3deg) translateY(8px) translateX(100px) scale(0.9); z-index: 0; }
+            99% { transform: rotate(-10deg) translateY(18px) translateX(0px) scale(0.96); z-index: 0; }
+            100% { transform: rotate(-10deg) translateY(18px) translateX(0px) scale(1); z-index: 20; }
+        }
+        .spin-left-arm-anim {
+            animation: spinLeftArm3D 2.6s cubic-bezier(0.38, 0, 0.22, 1) !important;
+        }
+
+        /* Tay phải quay giả 3D quanh thân giữ chuẩn cao độ vai không bị tụt */
+        @keyframes spinRightArm3D {
+            0% { transform: rotate(10deg) translateY(18px) translateX(0px) scale(1); z-index: 0; }
+            25% { transform: rotate(3deg) translateY(18px) translateX(-100px) scale(0.9); z-index: 0; }
+            49% { transform: rotate(-10deg) translateY(-14px) translateX(-200px) scale(0.96); z-index: 0; }
+            50% { transform: rotate(-10deg) translateY(0px) translateX(-200px) scale(1); z-index: 25; }
+            75% { transform: rotate(-3deg) translateY(14px) translateX(-100px) scale(1.05); z-index: 25; }
+            99% { transform: rotate(10deg) translateY(18px) translateX(0px) scale(1); z-index: 25; }
+            100% { transform: rotate(10deg) translateY(18px) translateX(0px) scale(1); z-index: 20; }
+        }
+        .spin-right-arm-anim {
+            animation: spinRightArm3D 2.6s cubic-bezier(0.38, 0, 0.22, 1) !important;
+        }
+
         /* Sóng âm LED quét ngang chân thực */
         .scanline-mask {
             background-size: 100% 4px;
@@ -221,7 +281,7 @@
             <!-- Khối cơ thể & đầu của EVE (Nhận hiệu ứng hào quang phát sáng khi ngủ) -->
             <div id="eve-avatar" class="flex flex-col items-center relative">
                 <!-- Đầu của EVE -->
-                <div id="eve-head" class="eve-head w-[215px] h-[181px] flex items-center justify-center mb-1 relative">
+                <div id="eve-head" class="eve-head w-[215px] h-[181px] flex items-center justify-center mb-1 relative overflow-hidden">
                     <!-- Visor tối màu -->
                     <div id="eve-visor" class="eve-visor w-[172px] h-[120px] rounded-[50%_50%_50%_50%_/_66%_66%_42%_42%] mt-3 relative flex items-center justify-center">
                         <div class="visor-reflection"></div>
@@ -249,7 +309,7 @@
                     <div id="left-arm" class="eve-arm w-[38px] h-[190px] absolute left-[32px] top-[20px] origin-top -rotate-[10deg]"></div>
                     
                     <!-- Thân mình của EVE -->
-                    <div class="eve-body w-[200px] h-[260px]"></div>
+                    <div class="eve-body w-[200px] h-[260px] relative z-10"></div>
                     
                     <!-- Cánh tay phải -->
                     <div id="right-arm" class="eve-arm w-[38px] h-[190px] absolute right-[32px] top-[20px] origin-top rotate-[10deg]"></div>
@@ -280,45 +340,76 @@
         <div class="floor-light w-[140px] h-[24px] absolute bottom-10 left-1/2 -translate-x-1/2 z-0"></div>
     </div>
 
-    <!-- Bảng điều khiển biểu cảm tinh gọn dạng biểu tượng bên phải màn hình -->
-    <div class="fixed right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-30 bg-slate-900/40 border border-slate-800/80 backdrop-blur-md p-3 rounded-2xl shadow-xl">
+    <!-- Bảng điều khiển biểu cảm & hành động bố cục 2 cột bên phải màn hình -->
+    <div class="fixed right-4 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2.5 z-30 bg-slate-900/60 border border-slate-800/80 backdrop-blur-md p-2.5 rounded-2xl shadow-xl max-h-[92vh]">
         
-        <!-- Nút Trạng thái Chờ (Idle) -->
-        <button onclick="setExpression('idle')" id="btn-idle" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Chế độ chờ">
-            <i class="fa-solid fa-robot text-base"></i>
-        </button>
+        <!-- Khung chứa 2 cột song song: Cột 1 là Biểu cảm, Cột 2 là Hành động -->
+        <div class="flex items-start gap-2">
+            <!-- Cột 1: Danh sách Biểu cảm (Expressions) -->
+            <div id="panel-expressions" class="flex flex-col gap-2 items-center">
+                <!-- Nút Trạng thái Chờ (Idle) -->
+                <button onclick="setExpression('idle')" id="btn-idle" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Chế độ chờ (Idle)">
+                    <i class="fa-solid fa-robot text-base"></i>
+                </button>
 
-        <!-- Nút Trạng thái Vui vẻ (Happy) -->
-        <button onclick="setExpression('happy')" id="btn-happy" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Vui vẻ">
-            <i class="fa-solid fa-face-laugh-beam text-base"></i>
-        </button>
+                <!-- Nút Trạng thái Vui vẻ (Happy) -->
+                <button onclick="setExpression('happy')" id="btn-happy" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Vui vẻ (Happy)">
+                    <i class="fa-solid fa-face-laugh-beam text-base"></i>
+                </button>
 
-        <!-- Nút Trạng thái Suy nghĩ (Thinking) -->
-        <button onclick="setExpression('thinking')" id="btn-thinking" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Suy nghĩ">
-            <i class="fa-solid fa-brain text-base"></i>
-        </button>
+                <!-- Nút Trạng thái Cười nhẹ (Smile) -->
+                <button onclick="setExpression('smile')" id="btn-smile" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-400 hover:text-teal-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Cười nhẹ (Smile)">
+                    <i class="fa-solid fa-face-smile text-base"></i>
+                </button>
 
-        <!-- Nút Trạng thái Ngủ (Sleeping) -->
-        <button onclick="setExpression('sleeping')" id="btn-sleeping" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Ngủ (Sleep)">
-            <i class="fa-solid fa-moon text-base"></i>
-        </button>
+                <!-- Nút Trạng thái Buồn (Sad) -->
+                <button onclick="setExpression('sad')" id="btn-sad" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 hover:text-rose-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Buồn (Sad)">
+                    <i class="fa-solid fa-face-frown text-base"></i>
+                </button>
 
-        <!-- Nút Thức dậy (Wake up) -->
-        <button onclick="setExpression('wakeup')" id="btn-wakeup" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Thức dậy (Wake up)">
-            <i class="fa-solid fa-sun text-base animate-spin" style="animation-duration: 8s;"></i>
-        </button>
+                <!-- Nút Trạng thái Tức giận (Angry) -->
+                <button onclick="setExpression('angry')" id="btn-angry" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-red-400 hover:text-red-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Tức giận (Angry)">
+                    <i class="fa-solid fa-face-angry text-base"></i>
+                </button>
 
-        <!-- Nút Giả lập Nói nói (Speech Test) -->
-        <button onclick="simulateSpeech()" id="btn-speech" class="w-10 h-10 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 flex items-center justify-center transition-all duration-200 shadow-md border border-sky-500/30" title="Giả lập giọng nói">
-            <i class="fa-solid fa-comment-dots text-base animate-pulse"></i>
-        </button>
-        <hr class="border-slate-800 my-1">
+                <!-- Nút Trạng thái Suy nghĩ (Thinking) -->
+                <button onclick="setExpression('thinking')" id="btn-thinking" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Suy nghĩ (Thinking)">
+                    <i class="fa-solid fa-brain text-base"></i>
+                </button>
+            </div>
 
-        <!-- Slider tinh chỉnh âm lượng dọc thu gọn -->
-        <div class="flex flex-col items-center py-2 h-28 justify-between">
-            <i class="fa-solid fa-volume-high text-[10px] text-slate-500"></i>
-            <input type="range" id="volume-slider" min="1" max="100" value="50" orient="vertical" class="h-16 w-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400" style="-webkit-appearance: slider-vertical; writing-mode: bt-lr;">
-            <i class="fa-solid fa-volume-low text-[10px] text-slate-500"></i>
+            <!-- Cột 2: Danh sách Hành động cử chỉ (Actions) -->
+            <div id="panel-actions" class="flex flex-col gap-2 items-center">
+                <!-- Nút Vẫy tay trái -->
+                <button onclick="triggerAction('wave-left')" id="btn-action-wave-left" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Vẫy tay trái (Wave Left)">
+                    <i class="fa-solid fa-hand text-base"></i>
+                </button>
+
+                <!-- Nút Vẫy tay phải -->
+                <button onclick="triggerAction('wave-right')" id="btn-action-wave-right" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Vẫy tay phải (Wave Right)">
+                    <i class="fa-solid fa-hand text-base inline-block scale-x-[-1]"></i>
+                </button>
+
+                <!-- Nút Xoay 360 độ -->
+                <button onclick="triggerAction('spin-360')" id="btn-action-spin-360" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-400 hover:text-purple-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Xoay 360° (Spin 360)">
+                    <i class="fa-solid fa-rotate text-base"></i>
+                </button>
+
+                <!-- Nút Trạng thái Ngủ (Sleeping) -->
+                <button onclick="setExpression('sleeping')" id="btn-sleeping" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Ngủ (Sleep)">
+                    <i class="fa-solid fa-moon text-base"></i>
+                </button>
+
+                <!-- Nút Thức dậy (Wake up) -->
+                <button onclick="setExpression('wakeup')" id="btn-wakeup" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Thức dậy (Wake up)">
+                    <i class="fa-solid fa-sun text-base animate-spin" style="animation-duration: 8s;"></i>
+                </button>
+
+                <!-- Nút Giả lập Nói nói (Speech Test) -->
+                <button onclick="simulateSpeech()" id="btn-speech" class="w-10 h-10 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 flex items-center justify-center transition-all duration-200 shadow-md border border-sky-500/30" title="Giả lập giọng nói">
+                    <i class="fa-solid fa-comment-dots text-base animate-pulse"></i>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -336,7 +427,6 @@
     <script>
         const audio = document.getElementById('audio-player');
         const systemStatus = document.getElementById('system-status');
-        const volumeSlider = document.getElementById('volume-slider');
         const leftArm = document.getElementById('left-arm');
         const rightArm = document.getElementById('right-arm');
         const eveVisor = document.getElementById('eve-visor');
@@ -395,27 +485,42 @@
                         Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
             } 
             else if (state === 'smile') {
-                const pLeft = rotatePoint(center.x - rx - 1, center.y, center.x, center.y, rot);
-                const pRight = rotatePoint(center.x + rx + 1, center.y, center.x, center.y, rot);
-                const pTop = rotatePoint(center.x, center.y - 20, center.x, center.y, rot);
+                const smileRx = rx + 1;
+                const pLeft = rotatePoint(center.x - smileRx, center.y, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + smileRx, center.y, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, center.y - 18, center.x, center.y, rot);
                 const pBottom = rotatePoint(center.x, center.y - 4, center.x, center.y, rot);
                 return `M ${pLeft.x} ${pLeft.y} Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
             }
             else if (state === 'sad') {
-                const sadRx = rx + 3;
-                const innerX = side === 'left' ? center.x + sadRx : center.x - sadRx;
-                const outerX = side === 'left' ? center.x - sadRx : center.x + sadRx;
+                const sadRx = rx + 2;
+                const sadRot = side === 'left' ? -16 : 16; // Cụp xuống thay vì xếch lên
+                const topY = center.y + 6;
+                const bottomY = center.y + 16;
                 
-                const pInnerTop = rotatePoint(innerX, center.y - 14, center.x, center.y, rot);
-                const pOuterTop = rotatePoint(outerX, center.y + 8, center.x, center.y, rot);
-                const pOuterBottom = rotatePoint(outerX, center.y + 18, center.x, center.y, rot);
-                const pInnerBottom = rotatePoint(innerX, center.y + 10, center.x, center.y, rot);
-                const pMidTop = rotatePoint(center.x, center.y - 8, center.x, center.y, rot);
+                const pLeft = rotatePoint(center.x - sadRx, center.y + 2, center.x, center.y, sadRot);
+                const pRight = rotatePoint(center.x + sadRx, center.y + 2, center.x, center.y, sadRot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, sadRot);
+                const pBottom = rotatePoint(center.x, bottomY, center.x, center.y, sadRot);
 
-                return `M ${pInnerTop.x} ${pInnerTop.y} 
-                        Q ${pMidTop.x} ${pMidTop.y} ${pOuterTop.x} ${pOuterTop.y} 
-                        Q ${outerX} ${center.y + 16} ${pOuterBottom.x} ${pOuterBottom.y} 
-                        Q ${center.x} ${center.y + 18} ${pInnerBottom.x} ${pInnerBottom.y} Z`;
+                return `M ${pLeft.x} ${pLeft.y} 
+                        Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} 
+                        Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            } 
+            else if (state === 'angry') {
+                const angryRx = rx + 2;
+                const angryRot = side === 'left' ? 22 : -22; // Giống sleeping (12) nhưng xếch hơn 1 chút xíu
+                const topY = center.y + 6;
+                const bottomY = center.y + 16;
+                
+                const pLeft = rotatePoint(center.x - angryRx, center.y + 2, center.x, center.y, angryRot);
+                const pRight = rotatePoint(center.x + angryRx, center.y + 2, center.x, center.y, angryRot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, angryRot);
+                const pBottom = rotatePoint(center.x, bottomY, center.x, center.y, angryRot);
+
+                return `M ${pLeft.x} ${pLeft.y} 
+                        Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} 
+                        Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
             } 
             else if (state === 'thinking') {
                 const slantRot = side === 'left' ? 22 : -22;
@@ -480,8 +585,9 @@
             leftEyePath.setAttribute('d', getEyePath('left', currentExpression, speechVal));
             rightEyePath.setAttribute('d', getEyePath('right', currentExpression, speechVal));
 
-            if (['happy', 'sleeping', 'blink-closed'].includes(currentExpression)) {
-                const strokeAttrs = { 'stroke': '#00f0ff', 'stroke-width': '6', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
+            if (['happy', 'smile', 'sleeping', 'blink-closed', 'angry', 'sad'].includes(currentExpression)) {
+                const strokeWidth = (currentExpression === 'smile') ? '5' : '6';
+                const strokeAttrs = { 'stroke': '#00f0ff', 'stroke-width': strokeWidth, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
                 Object.keys(strokeAttrs).forEach(key => {
                     leftEyePath.setAttribute(key, strokeAttrs[key]);
                     rightEyePath.setAttribute(key, strokeAttrs[key]);
@@ -545,6 +651,72 @@
             }
         }
 
+        let actionTimeout = null;
+
+        function resetActionStyles() {
+            leftArm.classList.remove('wave-left-anim', 'spin-left-arm-anim', 'rub-chin-anim', 'slow-transition');
+            rightArm.classList.remove('wave-right-anim', 'spin-right-arm-anim', 'slow-transition');
+            eveVisor.classList.remove('spin-visor-anim');
+            const eveChar = document.querySelector('.eve-character');
+            if (eveChar) eveChar.classList.remove('angry-rumble-anim');
+        }
+
+        function switchTab(tab) {
+            // Không còn dùng vì bảng điều khiển đã hiển thị đồng thời 2 cột
+        }
+
+        function triggerAction(actionName) {
+            if (!isActivated || isWakingUp) return;
+            if (currentExpression === 'sleeping') {
+                pendingExpression = 'idle';
+                triggerWakeUp();
+                return;
+            }
+
+            if (actionTimeout) clearTimeout(actionTimeout);
+            resetActionStyles();
+
+            if (actionName === 'wave-left') {
+                systemStatus.innerText = "WAVE_LEFT_ACTION";
+                systemStatus.className = "text-sky-400 font-bold font-mono";
+                currentExpression = 'smile';
+                updateEyes();
+                highlightControlButtons('btn-action-wave-left');
+                leftArm.classList.add('wave-left-anim');
+                actionTimeout = setTimeout(() => {
+                    resetActionStyles();
+                    setExpression('idle');
+                }, 3200);
+            } else if (actionName === 'wave-right') {
+                systemStatus.innerText = "WAVE_RIGHT_ACTION";
+                systemStatus.className = "text-sky-400 font-bold font-mono";
+                currentExpression = 'smile';
+                updateEyes();
+                highlightControlButtons('btn-action-wave-right');
+                rightArm.classList.add('wave-right-anim');
+                actionTimeout = setTimeout(() => {
+                    resetActionStyles();
+                    setExpression('idle');
+                }, 3200);
+            } else if (actionName === 'spin-360') {
+                systemStatus.innerText = "SPIN_360_ACTION";
+                systemStatus.className = "text-purple-400 font-bold font-mono";
+                currentExpression = 'smile';
+                updateEyes();
+                highlightControlButtons('btn-action-spin-360');
+                eveVisor.classList.add('spin-visor-anim');
+                leftArm.classList.add('spin-left-arm-anim');
+                rightArm.classList.add('spin-right-arm-anim');
+                actionTimeout = setTimeout(() => {
+                    resetActionStyles();
+                    setExpression('idle');
+                }, 2500);
+            } else if (actionName === 'angry') {
+                setExpression('angry');
+                highlightControlButtons('btn-action-angry');
+            }
+        }
+
         function setExpression(exp) {
             if (!isActivated) return;
             if (currentExpression === 'sleeping' && exp !== 'sleeping' && exp !== 'wakeup' && !isWakingUp) {
@@ -562,6 +734,8 @@
             isSpeakingSimulated = false;
             audio.pause();
             resetInactivityTimer();
+            resetActionStyles();
+            if (actionTimeout) clearTimeout(actionTimeout);
 
             if (window.thinkingTimeout) clearTimeout(window.thinkingTimeout);
             leftArm.classList.remove('rub-chin-anim', 'slow-transition');
@@ -578,11 +752,14 @@
             leftEyePath.style.opacity = '1';
             rightEyePath.style.opacity = '1';
 
-            if (exp === 'thinking') {
-                eveVisor.classList.remove('mt-3');
+            if (exp === 'thinking' || exp === 'angry') {
+                eveVisor.classList.remove('mt-3', 'mt-5');
                 eveVisor.classList.add('mt-7');
+            } else if (exp === 'sad') {
+                eveVisor.classList.remove('mt-3', 'mt-7');
+                eveVisor.classList.add('mt-5');
             } else {
-                eveVisor.classList.remove('mt-7');
+                eveVisor.classList.remove('mt-7', 'mt-5');
                 eveVisor.classList.add('mt-3');
             }
 
@@ -591,6 +768,11 @@
                 systemStatus.className = "text-emerald-400 font-bold font-mono";
                 rightArm.style.transform = 'rotate(110deg) translateY(-25px) translateX(0px)';
                 eveHead.classList.add('giggle-anim');
+            } else if (exp === 'smile') {
+                systemStatus.innerText = "SMILE_STATE";
+                systemStatus.className = "text-teal-400 font-bold font-mono";
+                leftArm.style.transform = 'rotate(-15deg) translateY(18px) translateX(2px)';
+                rightArm.style.transform = 'rotate(15deg) translateY(18px) translateX(-2px)';
             } else if (exp === 'sad') {
                 systemStatus.innerText = "SAD_STATE";
                 systemStatus.className = "text-rose-400 font-bold font-mono";
@@ -600,6 +782,17 @@
                 bubbleText.innerText = '💧';
                 bubbleText.className = "absolute text-slate-800 text-4xl font-black";
                 document.getElementById('thinking-bubble').classList.add('show-bubble');
+            } else if (exp === 'angry') {
+                systemStatus.innerText = "ANGRY_STATE";
+                systemStatus.className = "text-rose-400 font-bold font-mono";
+                leftArm.style.transform = 'rotate(-20deg) translateY(22px) translateX(-4px)';
+                rightArm.style.transform = 'rotate(20deg) translateY(22px) translateX(4px)';
+                actionTimeout = setTimeout(() => {
+                    if (currentExpression === 'angry') {
+                        resetActionStyles();
+                        setExpression('idle');
+                    }
+                }, 3500);
             } else if (exp === 'thinking') {
                 systemStatus.innerText = "THINKING_STATE";
                 systemStatus.className = "text-amber-400 font-bold font-mono";
@@ -648,13 +841,33 @@
             highlightControlButtons();
         }
 
-        function highlightControlButtons() {
-            const btns = { idle: 'btn-idle', happy: 'btn-happy', thinking: 'btn-thinking', sleeping: 'btn-sleeping', wakeup: 'btn-wakeup' };
-            Object.keys(btns).forEach(key => {
-                const btn = document.getElementById(btns[key]);
+        function highlightControlButtons(activeOverride = null) {
+            const allBtns = [
+                'btn-idle', 'btn-happy', 'btn-smile', 'btn-sad', 'btn-angry', 'btn-thinking', 'btn-sleeping', 'btn-wakeup',
+                'btn-action-wave-left', 'btn-action-wave-right', 'btn-action-angry', 'btn-action-spin-360'
+            ];
+
+            const exprMap = {
+                idle: 'btn-idle',
+                happy: 'btn-happy',
+                smile: 'btn-smile',
+                sad: 'btn-sad',
+                angry: 'btn-angry',
+                thinking: 'btn-thinking',
+                sleeping: 'btn-sleeping',
+                wakeup: 'btn-wakeup'
+            };
+
+            const targetActive = activeOverride || exprMap[currentExpression];
+
+            allBtns.forEach(id => {
+                const btn = document.getElementById(id);
                 if (btn) {
-                    if (key === currentExpression) btn.classList.add('bg-sky-500/20', 'border-sky-500');
-                    else btn.classList.remove('bg-sky-500/20', 'border-sky-500');
+                    if (id === targetActive || (currentExpression === 'angry' && id === 'btn-action-angry')) {
+                        btn.classList.add('bg-sky-500/20', 'border-sky-500');
+                    } else {
+                        btn.classList.remove('bg-sky-500/20', 'border-sky-500');
+                    }
                 }
             });
         }
@@ -790,7 +1003,7 @@
             function runSimulation() {
                 if (currentExpression === 'speaking' && isSpeakingSimulated) {
                     phase += 0.25;
-                    const volume = volumeSlider.value / 100;
+                    const volume = 0.55;
                     let baseWave = Math.sin(phase) * Math.cos(phase * 0.7);
                     let targetAmp = Math.max(-10, baseWave * 12 * volume + (Math.random() * 4 - 2) * volume);
                     updateEyes(targetAmp);
@@ -806,14 +1019,20 @@
         function startRandomExpressions() {
             const nextCycle = () => {
                 if (isActivated && currentExpression === 'idle' && !isSpeakingSimulated && (audio.paused || audio.ended)) {
-                    const choice = Math.floor(Math.random() * 4);
+                    const choice = Math.floor(Math.random() * 6);
                     if (choice === 1) {
                         setExpression('happy');
                         setTimeout(() => { if (currentExpression === 'happy') setExpression('idle'); }, 3000);
                     } else if (choice === 2) {
+                        setExpression('smile');
+                        setTimeout(() => { if (currentExpression === 'smile') setExpression('idle'); }, 3500);
+                    } else if (choice === 3) {
+                        setExpression('sad');
+                        setTimeout(() => { if (currentExpression === 'sad') setExpression('idle'); }, 3500);
+                    } else if (choice === 4) {
                         setExpression('thinking');
                         setTimeout(() => { if (currentExpression === 'thinking') setExpression('idle'); }, 5000);
-                    } else if (choice === 3) simulateSpeech(8000);
+                    } else if (choice === 5) simulateSpeech(8000);
                 }
                 expressionCycleTimeout = setTimeout(nextCycle, 10000);
             };
@@ -846,6 +1065,8 @@
                 const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
                 if (data.type === 'SET_EXPRESSION') {
                     setExpression(data.payload);
+                } else if (data.type === 'TRIGGER_ACTION') {
+                    triggerAction(data.payload);
                 } else if (data.type === 'SPEAK_SIMULATION') {
                     simulateSpeech(data.payload || 4500);
                 } else if (data.type === 'WAKEUP') {
