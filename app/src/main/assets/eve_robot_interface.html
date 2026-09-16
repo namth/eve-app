@@ -1,0 +1,1921 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVE AI Assistant Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: radial-gradient(circle at center, #112240 0%, #030712 100%);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Hiệu ứng bay lơ lửng đồng bộ của EVE giống trong ảnh 8025a9f63435b64305b1cf045c76fd70.jpg */
+        @keyframes hover {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-12px); }
+            100% { transform: translateY(0px); }
+        }
+
+        @keyframes floorGlow {
+            0% { transform: translateX(-50%) scale(1); opacity: 0.75; }
+            50% { transform: translateX(-50%) scale(0.85); opacity: 0.55; }
+            100% { transform: translateX(-50%) scale(1); opacity: 0.75; }
+        }
+
+        .eve-character {
+            animation: hover 4s ease-in-out infinite;
+        }
+
+        #eve-avatar {
+            transition: filter 2s ease-in-out;
+        }
+
+        /* Hiệu ứng hào quang Ánh Bạc Tinh Khôi ôm sát thân EVE cân bằng hoàn hảo giữa đầu và thân */
+        @keyframes sleepAuraPulse {
+            0%, 100% {
+                filter: 
+                    drop-shadow(0 0 0px rgba(255, 255, 255, 0)) 
+                    drop-shadow(0 0 0px rgba(203, 213, 225, 0));
+            }
+            50% {
+                filter: 
+                    drop-shadow(0 0 20px rgba(255, 255, 255, 0.95)) 
+                    drop-shadow(0 0 1px rgba(203, 213, 225, 0.65));
+            }
+        }
+
+        /* Hiệu ứng toàn bộ Visor rực sáng đều toàn diện khi ngủ */
+        .visor-sleep-glow {
+            background: rgba(255, 255, 255, 0.75);
+            box-shadow: 
+                0 0 25px rgba(255, 255, 255, 0.9),
+                inset 0 0 15px rgba(255, 255, 255, 0.9);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        @keyframes visorGlowPulse {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 0.35; }
+        }
+
+        .aura-pulse {
+            animation: sleepAuraPulse 3s ease-in-out infinite;
+        }
+
+        .aura-pulse .visor-sleep-glow {
+            animation: visorGlowPulse 3s ease-in-out infinite;
+        }
+
+        /* Đầu hình quả trứng siêu bóng bẩy */
+        .eve-head {
+            background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 45%, #cbd5e1 100%);
+            box-shadow: 
+                inset 10px 10px 20px rgba(255, 255, 255, 0.9),
+                inset -10px -10px 25px rgba(100, 116, 139, 0.25),
+                0 15px 35px rgba(0, 0, 0, 0.35);
+            position: relative;
+            border-radius: 50% 50% 50% 50% / 66% 66% 40% 40%;
+        }
+
+        /* Visor màu tối thẳm sâu thẳm */
+        .eve-visor {
+            background: radial-gradient(circle at 50% 30%, #001c3d 0%, #020617 100%);
+            box-shadow: 
+                inset 0 10px 20px rgba(0, 0, 0, 0.95),
+                inset 0 -5px 15px rgba(255, 255, 255, 0.05),
+                0 0 0 2px rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+            transition: margin-top 0.3s ease-in-out;
+        }
+
+        /* Chi tiết bóng phản chiếu trên Visor */
+        .visor-reflection {
+            position: absolute;
+            top: 2px;
+            left: 15%;
+            width: 70%;
+            height: 30%;
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 100%);
+            border-radius: 0 0 100px 100px / 0 0 35px 35px;
+            pointer-events: none;
+        }
+
+        /* Thân hình giọt nước nhẵn nhụi của EVE */
+        .eve-body {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 40%, #94a3b8 100%);
+            box-shadow: 
+                inset 15px 15px 30px rgba(255, 255, 255, 0.95),
+                inset -15px -15px 35px rgba(100, 116, 139, 0.25),
+                0 25px 45px rgba(0, 0, 0, 0.4);
+            border-radius: 80px 80px 100px 100px / 25px 25px 230px 230px;
+        }
+
+        /* Cánh tay lơ lửng không khớp nối */
+        .eve-arm {
+            background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 50%, #94a3b8 100%);
+            box-shadow: 
+                inset 6px 6px 12px rgba(255, 255, 255, 0.9),
+                inset -6px -6px 12px rgba(100, 116, 139, 0.2),
+                0 15px 25px rgba(0, 0, 0, 0.3);
+            border-radius: 50% 50% 50% 50% / 40% 40% 60% 60%;
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 1.5s ease-in-out;
+            z-index: 20;
+        }
+
+        #left-eye-path, #right-eye-path {
+            transition: opacity 1.5s ease-in-out;
+        }
+
+        /* Hiệu ứng giật mình khi thức dậy */
+        @keyframes startle {
+            0% { transform: translateY(0px) scale(1); }
+            20% { transform: translateY(-16px) scale(1.04); }
+            45% { transform: translateY(3px) scale(0.98); }
+            70% { transform: translateY(-3px) scale(1.01); }
+            100% { transform: translateY(0px) scale(1); }
+        }
+
+        /* Hiệu ứng xoa cằm nhẹ nhàng khi suy nghĩ/vui vẻ */
+        @keyframes rubChin {
+            0% { transform: rotate(-122deg) translateY(-41px) translateX(-25px); }
+            50% { transform: rotate(-118deg) translateY(-32px) translateX(-25px); }
+            100% { transform: rotate(-122deg) translateY(-41px) translateX(-25px); }
+        }
+        .rub-chin-anim {
+            animation: rubChin 2s ease-in-out infinite !important;
+        }
+        .slow-transition {
+            transition: transform 1.0s ease-in-out !important;
+        }
+
+        /* Bong bóng suy nghĩ và hiệu ứng nổi */
+        .show-bubble {
+            opacity: 1 !important;
+            transform: scale(1) !important;
+            pointer-events: auto !important;
+        }
+        @keyframes bubbleFloat {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+        }
+        .bubble-inner {
+            animation: bubbleFloat 2s ease-in-out infinite;
+        }
+
+        /* Hiệu ứng rung đầu khi cười khúc khích */
+        @keyframes giggle {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            20% { transform: translateY(-6px) rotate(-3deg); }
+            40% { transform: translateY(2px) rotate(2deg); }
+            60% { transform: translateY(-5px) rotate(-2deg); }
+            80% { transform: translateY(1px) rotate(1deg); }
+        }
+        .giggle-anim {
+            animation: giggle 0.38s ease-in-out infinite !important;
+        }
+
+        /* Diễn hoạt vẫy tay trái giơ chéo tự nhiên ra ngoài thân */
+        @keyframes waveLeftSky {
+            0%, 100% { transform: rotate(-200deg) translateY(2px) translateX(-6px); }
+            50% { transform: rotate(-180deg) translateY(2px) translateX(-6px); }
+        }
+        .wave-left-anim {
+            animation: waveLeftSky 0.65s ease-in-out infinite !important;
+        }
+
+        /* Diễn hoạt vẫy tay phải giơ chéo tự nhiên ra ngoài thân */
+        @keyframes waveRightSky {
+            0%, 100% { transform: rotate(200deg) translateY(2px) translateX(6px); }
+            50% { transform: rotate(180deg) translateY(2px) translateX(6px); }
+        }
+        .wave-right-anim {
+            animation: waveRightSky 0.65s ease-in-out infinite !important;
+        }
+
+        /* Hiệu ứng xoay tròn giả 3D: Visor quay vòng quanh đầu, bo sát viền ngoài */
+        @keyframes spinVisor3D {
+            0% { transform: translateX(0px) scaleX(1); opacity: 1; }
+            25% { transform: translateX(45px) scaleX(0.72); opacity: 1; }
+            42% { transform: translateX(82px) scaleX(0.22); opacity: 0; }
+            50% { transform: translateX(0px) scaleX(0); opacity: 0; }
+            58% { transform: translateX(-82px) scaleX(0.22); opacity: 0; }
+            75% { transform: translateX(-45px) scaleX(0.72); opacity: 1; }
+            100% { transform: translateX(0px) scaleX(1); opacity: 1; }
+        }
+        .spin-visor-anim {
+            animation: spinVisor3D 2.6s cubic-bezier(0.38, 0, 0.22, 1) !important;
+        }
+
+        /* Tay trái quay giả 3D quanh thân giữ chuẩn cao độ vai không bị tụt */
+        @keyframes spinLeftArm3D {
+            0% { transform: rotate(-10deg) translateY(18px) translateX(0px) scale(1); z-index: 25; }
+            25% { transform: rotate(-3deg) translateY(16px) translateX(100px) scale(1.05); z-index: 25; }
+            49% { transform: rotate(10deg) translateY(-14px) translateX(200px) scale(1); z-index: 25; }
+            50% { transform: rotate(10deg) translateY(0px) translateX(200px) scale(0.96); z-index: 0; }
+            75% { transform: rotate(3deg) translateY(8px) translateX(100px) scale(0.9); z-index: 0; }
+            99% { transform: rotate(-10deg) translateY(18px) translateX(0px) scale(0.96); z-index: 0; }
+            100% { transform: rotate(-10deg) translateY(18px) translateX(0px) scale(1); z-index: 20; }
+        }
+        .spin-left-arm-anim {
+            animation: spinLeftArm3D 2.6s cubic-bezier(0.38, 0, 0.22, 1) !important;
+        }
+
+        /* Tay phải quay giả 3D quanh thân giữ chuẩn cao độ vai không bị tụt */
+        @keyframes spinRightArm3D {
+            0% { transform: rotate(10deg) translateY(18px) translateX(0px) scale(1); z-index: 0; }
+            25% { transform: rotate(3deg) translateY(18px) translateX(-100px) scale(0.9); z-index: 0; }
+            49% { transform: rotate(-10deg) translateY(-14px) translateX(-200px) scale(0.96); z-index: 0; }
+            50% { transform: rotate(-10deg) translateY(0px) translateX(-200px) scale(1); z-index: 25; }
+            75% { transform: rotate(-3deg) translateY(14px) translateX(-100px) scale(1.05); z-index: 25; }
+            99% { transform: rotate(10deg) translateY(18px) translateX(0px) scale(1); z-index: 25; }
+            100% { transform: rotate(10deg) translateY(18px) translateX(0px) scale(1); z-index: 20; }
+        }
+        .spin-right-arm-anim {
+            animation: spinRightArm3D 2.6s cubic-bezier(0.38, 0, 0.22, 1) !important;
+        }
+
+        /* 1. Quét Laser phân tích từ ngực trái (Left Chest Dual-Triangle Scan) */
+        @keyframes scanTextBlink {
+            0%, 100% {
+                opacity: 0.55;
+                filter: drop-shadow(0 0 2px #00f0ff);
+            }
+            50% {
+                opacity: 1;
+                filter: drop-shadow(0 0 4px #00eeff5e) drop-shadow(0 0 8px #38bff814);
+            }
+        }
+        .scan-text-blink {
+            animation: scanTextBlink 0.75s ease-in-out infinite alternate;
+        }
+
+        /* 2 Hình tam giác thu vào và giãn ra liên tục tỏa xuống dưới chân */
+        @keyframes scanTriOuterPulse {
+            0%, 100% {
+                transform: scaleX(0.72) scaleY(0.92);
+                opacity: 0.55;
+            }
+            50% {
+                transform: scaleX(1.25) scaleY(1.04);
+                opacity: 0.95;
+            }
+        }
+        @keyframes scanTriInnerPulse {
+            0%, 100% {
+                transform: scaleX(1.22) scaleY(1.04);
+                opacity: 0.95;
+            }
+            50% {
+                transform: scaleX(0.68) scaleY(0.88);
+                opacity: 0.45;
+            }
+        }
+        .scan-triangle-outer {
+            transform-origin: 39px 14px;
+            animation: scanTriOuterPulse 1.35s ease-in-out infinite alternate;
+        }
+        .scan-triangle-inner {
+            transform-origin: 39px 14px;
+            animation: scanTriInnerPulse 1.35s ease-in-out infinite alternate;
+        }
+
+        .chest-scan-active {
+            opacity: 1 !important;
+        }
+
+        @keyframes scanHeadPonder {
+            0%, 100% { transform: translateY(2px) rotate(0deg); }
+            50% { transform: translateY(4px) rotate(0.5deg); }
+        }
+        .scan-head-tilt {
+            animation: scanHeadPonder 2.5s ease-in-out infinite !important;
+        }
+        /* 2 tay dang ra giống tư thế jet boost */
+        .scan-arm-left {
+            transform: rotate(28deg) translateY(30px) translateX(22px) scale(0.92) !important;
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .scan-arm-right {
+            transform: rotate(-28deg) translateY(30px) translateX(-22px) scale(0.92) !important;
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        /* 2. Phát hiện mầm cây sự sống (Directive Plant) */
+        /* Hào quang ôm gọn mỏng hơn: lõi trắng tinh khiết bên trong và chuyển sắc xanh lá nhẹ dần ra ngoài */
+        @keyframes plantAuraPulse {
+            0%, 100% {
+                filter: 
+                    drop-shadow(0 0 3px rgba(255, 255, 255, 0.9)) 
+                    drop-shadow(0 0 8px rgba(74, 222, 128, 0.45))
+                    drop-shadow(0 0 14px rgba(34, 197, 94, 0.2));
+            }
+            50% {
+                filter: 
+                    drop-shadow(0 0 6px rgba(255, 255, 255, 1)) 
+                    drop-shadow(0 0 13px rgba(74, 222, 128, 0.75))
+                    drop-shadow(0 0 20px rgba(34, 197, 94, 0.35));
+            }
+        }
+        .plant-aura-pulse {
+            animation: plantAuraPulse 2.8s ease-in-out infinite !important;
+        }
+
+        @keyframes plantBadgeGlow {
+            0%, 100% {
+                transform: scale(0.96);
+                box-shadow: 0 0 12px #22c55e, 0 0 24px rgba(34, 197, 94, 0.7), inset 0 0 8px #22c55e;
+            }
+            50% {
+                transform: scale(1.08);
+                box-shadow: 0 0 22px #4ade80, 0 0 38px rgba(74, 222, 128, 0.95), inset 0 0 12px #4ade80;
+            }
+        }
+        .plant-badge-active {
+            opacity: 1 !important;
+            border-radius: 9999px !important;
+            animation: plantBadgeGlow 1.4s ease-in-out infinite !important;
+        }
+
+        /* Cánh tay giống trạng thái smile */
+        .plant-arm-left {
+            transform: rotate(-15deg) translateY(18px) translateX(2px) !important;
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .plant-arm-right {
+            transform: rotate(15deg) translateY(18px) translateX(-2px) !important;
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .plant-floor-active {
+            background: radial-gradient(ellipse, rgba(255, 255, 255, 0.85) 0%, rgba(74, 222, 128, 0.55) 30%, rgba(34, 197, 94, 0.2) 55%, rgba(0, 0, 0, 0) 75%) !important;
+            filter: blur(4px) drop-shadow(0 0 16px #22c55e) !important;
+        }
+
+        /* 3. Pháo Plasma Tác chiến (Blaster Combat Mode - Dọc tay, thu ngắn giả 3D) */
+        .blaster-arm-active {
+            transform: rotate(0deg) scaleY(0.48) scaleX(1.15) translateY(12px) translateX(-8px) !important;
+            transform-origin: top center !important;
+            box-shadow: 
+                inset 8px 8px 16px rgba(255, 255, 255, 0.95),
+                inset -8px -8px 16px rgba(100, 116, 139, 0.3),
+                0 22px 35px rgba(0, 0, 0, 0.5) !important;
+            transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+            z-index: 50 !important;
+        }
+
+        /* Quả cầu năng lượng Plasma màu xanh gradient đơn giản */
+        .plasma-energy-orb {
+            background: #00f0ff;
+            box-shadow: 0 0 16px #00f0ff, 0 0 32px rgba(14, 165, 233, 0.7);
+        }
+        @keyframes blasterCirclePulse {
+            0%, 100% {
+                transform: translate(-50%, 30%) scaleX(0.87) scaleY(2.08);
+                filter: drop-shadow(0 0 12px #00f0ff) drop-shadow(0 0 24px #0284c7);
+            }
+            50% {
+                transform: translate(-50%, 30%) scaleX(0.95) scaleY(2.28);
+                filter: drop-shadow(0 0 18px #38bdf8) drop-shadow(0 0 38px #0ea5e9);
+            }
+        }
+        .blaster-glow-active {
+            opacity: 1 !important;
+            animation: blasterCirclePulse 0.45s ease-in-out infinite !important;
+        }
+        @keyframes blasterRecoilKick {
+            0% { transform: translateY(0) scale(1); }
+            15% { transform: translateY(6px) scale(0.97); }
+            35% { transform: translateY(-3px) scale(1.01); }
+            60% { transform: translateY(1px) scale(0.99); }
+            100% { transform: translateY(0) scale(1); }
+        }
+        .blaster-recoil-anim {
+            animation: blasterRecoilKick 0.6s ease-out infinite !important;
+        }
+
+        /* Tay còn lại buông thõng thẳng xuống dưới đất */
+        .blaster-support-arm {
+            transform: rotate(0deg) translateY(24px) translateX(0px) !important;
+            transition: transform 0.45s ease-out !important;
+        }
+
+        /* 4. Nghiêng đầu tò mò (Curious Head Tilt) */
+        @keyframes curiousHeadTilt {
+            0%, 100% { transform: rotate(12deg) translateY(1px) translateX(13px); }
+            50% { transform: rotate(9deg) translateY(2px) translateX(12px); }
+        }
+        .curious-head-anim {
+            animation: curiousHeadTilt 2.2s ease-in-out infinite !important;
+        }
+        .curious-arm-left {
+            transform: rotate(-122deg) translateY(-40px) translateX(-22px) !important;
+            transition: transform 0.7s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 25 !important;
+        }
+        .curious-arm-right {
+            transform: rotate(0deg) translateY(24px) translateX(-8px) !important;
+            transition: transform 0.7s ease-out;
+        }
+
+        /* 5. Tỏ tình / Thả tim (Love & Heart Eyes) */
+        @keyframes loveHugLeft {
+            0%, 100% { transform: rotate(62deg) translateY(-2px) translateX(15px); }
+            50% { transform: rotate(48deg) translateY(0px) translateX(13px); }
+        }
+        @keyframes loveHugRight {
+            0%, 100% { transform: rotate(-62deg) translateY(-2px) translateX(-15px); }
+            50% { transform: rotate(-48deg) translateY(-0px) translateX(-13px); }
+        }
+        .love-hug-left-anim {
+            animation: loveHugLeft 2.4s ease-in-out infinite !important;
+            z-index: 30 !important;
+        }
+        .love-hug-right-anim {
+            animation: loveHugRight 2.4s ease-in-out infinite !important;
+            z-index: 30 !important;
+        }
+        .blush-cheeks-active {
+            opacity: 1 !important;
+            animation: blushPulse 2.4s ease-in-out infinite !important;
+        }
+        @keyframes blushPulse {
+            0%, 100% { opacity: 0.65; }
+            50% { opacity: 0.95; }
+        }
+        /* Trạng thái Xấu hổ (Shy / Embarrassed) */
+        @keyframes shyFidget {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            25% { transform: translateY(1.5px) rotate(1.8deg); }
+            50% { transform: translateY(0) rotate(0deg); }
+            75% { transform: translateY(1.5px) rotate(-1.8deg); }
+        }
+        .shy-head-anim {
+            animation: shyFidget 2s ease-in-out infinite !important;
+        }
+
+        /* 6. Nhún vai bối rối (Confused Shrug) */
+        @keyframes shrugLeftArm {
+            0%, 100% { transform: rotate(-8deg) translateY(22px) translateX(4px); }
+            50% { transform: rotate(-2deg) translateY(25px) translateX(6px); }
+        }
+        @keyframes shrugRightArm {
+            0%, 100% { transform: rotate(8deg) translateY(22px) translateX(-4px); }
+            50% { transform: rotate(2deg) translateY(25px) translateX(-6px); }
+        }
+        @keyframes shrugHeadTilt {
+            0%, 100% { transform: rotate(-7deg); }
+            50% { transform: rotate(7deg); }
+        }
+        .shrug-left-arm-anim {
+            animation: shrugLeftArm 1.5s ease-in-out infinite !important;
+        }
+        .shrug-right-arm-anim {
+            animation: shrugRightArm 1.5s ease-in-out infinite !important;
+        }
+        .shrug-head-anim {
+            animation: shrugHeadTilt 1.5s ease-in-out infinite !important;
+        }
+
+        /* 7. Vỗ tay tán thưởng (Applause Clap) */
+        @keyframes clapLeftArm {
+            0%, 100% { transform: rotate(-32deg) translateY(14px) translateX(6px); }
+            50% { transform: rotate(-26deg) translateY(12px) translateX(8px); }
+        }
+        @keyframes clapRightArm {
+            0%, 100% { transform: rotate(32deg) translateY(14px) translateX(-6px); }
+            50% { transform: rotate(26deg) translateY(12px) translateX(-8px); }
+        }
+        @keyframes clapBodyBounce {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-7px); }
+        }
+        .clap-left-arm-anim {
+            animation: clapLeftArm 0.35s ease-in-out infinite !important;
+            z-index: 30 !important;
+        }
+        .clap-right-arm-anim {
+            animation: clapRightArm 0.35s ease-in-out infinite !important;
+            z-index: 30 !important;
+        }
+        .clap-body-anim {
+            animation: clapBodyBounce 0.35s ease-in-out infinite !important;
+        }
+
+        /* 8. Lướt bay siêu thanh (Supersonic Jet Boost - Bay lượn cả trái lẫn phải) */
+        @keyframes jetBodyFlight {
+            0%, 100% {
+                transform: translateY(-16px) translateX(0px) rotate(0deg) scale(1);
+            }
+            25% {
+                transform: translateY(-28px) translateX(46px) rotate(26deg) scale(1.02);
+            }
+            50% {
+                transform: translateY(-14px) translateX(0px) rotate(0deg) scale(0.98);
+            }
+            75% {
+                transform: translateY(-28px) translateX(-46px) rotate(-26deg) scale(1.02);
+            }
+        }
+        .jet-body-anim {
+            animation: jetBodyFlight 2.8s ease-in-out infinite !important;
+        }
+
+        @keyframes jetHeadBanking {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            25% { transform: translateY(-2px) rotate(8deg); }
+            50% { transform: translateY(0) rotate(0deg); }
+            75% { transform: translateY(-2px) rotate(-8deg); }
+        }
+        .jet-head-anim {
+            animation: jetHeadBanking 2.8s ease-in-out infinite !important;
+        }
+
+        @keyframes jetArmLeftFlight {
+            0% {
+                transform: rotate(26deg) translateY(28px) translateX(20px) scale(0.92);
+            }
+            6.25% {
+                transform: rotate(33deg) translateY(24px) translateX(24px) scale(0.94);
+            }
+            12.5% {
+                transform: rotate(24deg) translateY(29px) translateX(19px) scale(0.91);
+            }
+            18.75% {
+                transform: rotate(35deg) translateY(27px) translateX(27px) scale(0.95);
+            }
+            25% {
+                transform: rotate(32deg) translateY(32px) translateX(26px) scale(0.94);
+            }
+            31.25% {
+                transform: rotate(38deg) translateY(28px) translateX(29px) scale(0.95);
+            }
+            37.5% {
+                transform: rotate(27deg) translateY(30px) translateX(22px) scale(0.92);
+            }
+            43.75% {
+                transform: rotate(32deg) translateY(25px) translateX(24px) scale(0.93);
+            }
+            50% {
+                transform: rotate(24deg) translateY(26px) translateX(18px) scale(0.92);
+            }
+            56.25% {
+                transform: rotate(30deg) translateY(23px) translateX(21px) scale(0.93);
+            }
+            62.5% {
+                transform: rotate(20deg) translateY(27px) translateX(16px) scale(0.90);
+            }
+            68.75% {
+                transform: rotate(25deg) translateY(22px) translateX(18px) scale(0.92);
+            }
+            75% {
+                transform: rotate(18deg) translateY(24px) translateX(14px) scale(0.90);
+            }
+            81.25% {
+                transform: rotate(25deg) translateY(21px) translateX(17px) scale(0.91);
+            }
+            87.5% {
+                transform: rotate(19deg) translateY(26px) translateX(15px) scale(0.89);
+            }
+            93.75% {
+                transform: rotate(29deg) translateY(25px) translateX(21px) scale(0.93);
+            }
+            100% {
+                transform: rotate(26deg) translateY(28px) translateX(20px) scale(0.92);
+            }
+        }
+        .jet-arm-left {
+            animation: jetArmLeftFlight 2.8s ease-in-out infinite !important;
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes jetArmRightFlight {
+            0% {
+                transform: rotate(-26deg) translateY(28px) translateX(-20px) scale(0.92);
+            }
+            6.25% {
+                transform: rotate(-33deg) translateY(24px) translateX(-24px) scale(0.94);
+            }
+            12.5% {
+                transform: rotate(-24deg) translateY(29px) translateX(-19px) scale(0.91);
+            }
+            18.75% {
+                transform: rotate(-35deg) translateY(27px) translateX(-27px) scale(0.95);
+            }
+            25% {
+                transform: rotate(-32deg) translateY(32px) translateX(-26px) scale(0.94);
+            }
+            31.25% {
+                transform: rotate(-38deg) translateY(28px) translateX(-29px) scale(0.95);
+            }
+            37.5% {
+                transform: rotate(-27deg) translateY(30px) translateX(-22px) scale(0.92);
+            }
+            43.75% {
+                transform: rotate(-35deg) translateY(25px) translateX(-24px) scale(0.93);
+            }
+            50% {
+                transform: rotate(-24deg) translateY(26px) translateX(-18px) scale(0.92);
+            }
+            56.25% {
+                transform: rotate(-30deg) translateY(23px) translateX(-21px) scale(0.93);
+            }
+            62.5% {
+                transform: rotate(-20deg) translateY(27px) translateX(-16px) scale(0.90);
+            }
+            68.75% {
+                transform: rotate(-25deg) translateY(22px) translateX(-18px) scale(0.92);
+            }
+            75% {
+                transform: rotate(-18deg) translateY(24px) translateX(-14px) scale(0.94);
+            }
+            81.25% {
+                transform: rotate(-25deg) translateY(21px) translateX(-17px) scale(0.95);
+            }
+            87.5% {
+                transform: rotate(-19deg) translateY(26px) translateX(-15px) scale(0.92);
+            }
+            93.75% {
+                transform: rotate(-29deg) translateY(25px) translateX(-21px) scale(0.93);
+            }
+            100% {
+                transform: rotate(-26deg) translateY(28px) translateX(-20px) scale(0.92);
+            }
+        }
+        .jet-arm-right {
+            animation: jetArmRightFlight 2.8s ease-in-out infinite !important;
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes jetThrusterFlight {
+            0%, 100% {
+                transform: translateX(-50%) scaleX(2.2) scaleY(1.3);
+                opacity: 0.9;
+                filter: blur(3px) drop-shadow(0 0 25px #00f0ff);
+            }
+            25% {
+                transform: translateX(-50%) scaleX(2.6) scaleY(1.6);
+                opacity: 1;
+                filter: blur(2px) drop-shadow(0 0 40px #38bdf8);
+            }
+            50% {
+                transform: translateX(-50%) scaleX(2.0) scaleY(1.2);
+                opacity: 0.85;
+                filter: blur(3px) drop-shadow(0 0 22px #00f0ff);
+            }
+            75% {
+                transform: translateX(-50%) scaleX(2.6) scaleY(1.6);
+                opacity: 1;
+                filter: blur(2px) drop-shadow(0 0 40px #38bdf8);
+            }
+        }
+        .jet-floor-active {
+            background: radial-gradient(ellipse, rgba(0, 240, 255, 0.95) 0%, rgba(14, 165, 233, 0.6) 40%, rgba(0, 0, 0, 0) 75%) !important;
+            animation: jetThrusterFlight 2.8s ease-in-out infinite !important;
+        }
+
+        /* Sóng âm LED quét ngang chân thực */
+        .scanline-mask {
+            background-size: 100% 4px;
+            background-image: linear-gradient(
+                to bottom,
+                rgba(0, 0, 0, 0.3) 50%,
+                transparent 50%
+            );
+        }
+
+        /* Cường hóa ánh sáng Neon cực mạnh cho mắt EVE */
+        .neon-eye-glow {
+            filter: 
+                drop-shadow(0 0 8px rgba(0, 240, 255, 0.9)) 
+                drop-shadow(0 0 20px rgba(0, 180, 255, 0.6))
+                drop-shadow(0 0 45px rgba(0, 100, 255, 0.4));
+        }
+
+        /* Bóng phản chiếu ánh sáng trắng dưới sàn */
+        .floor-light {
+            background: radial-gradient(ellipse, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0) 70%);
+            filter: blur(5px);
+            animation: floorGlow 4s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4 overflow-hidden relative">
+
+    <!-- Sân khấu chính hiển thị mô hình EVE -->
+    <div class="relative w-full max-w-[600px] flex flex-col items-center justify-center min-h-[520px]">
+        
+        <!-- Mô hình Robot EVE (Đầu, thân, cánh tay phối hợp) -->
+        <div class="eve-character flex flex-col items-center relative z-10 w-full">
+            
+            <!-- Khối cơ thể & đầu của EVE (Nhận hiệu ứng hào quang phát sáng khi ngủ) -->
+            <div id="eve-avatar" class="flex flex-col items-center relative cursor-pointer">
+                <!-- Đầu của EVE -->
+                <div id="eve-head" class="eve-head w-[215px] h-[181px] flex items-center justify-center mb-1 relative overflow-hidden">
+                    <!-- Visor tối màu -->
+                    <div id="eve-visor" class="eve-visor w-[172px] h-[120px] rounded-[50%_50%_50%_50%_/_66%_66%_42%_42%] mt-3 relative flex items-center justify-center">
+                        <div class="visor-reflection"></div>
+                        <!-- Lớp hào quang radial tỏa sáng rực rỡ bên trong Visor khi ngủ -->
+                        <div class="visor-sleep-glow absolute inset-0 rounded-[50%_50%_50%_50%_/_66%_66%_42%_42%]"></div>
+                        
+                        <!-- Vết má hồng nhẹ khi thả tim / xấu hổ (Blush Cheeks) -->
+                        <div id="blush-cheeks" class="absolute inset-0 pointer-events-none opacity-0 transition-opacity duration-500 z-20">
+                            <div class="absolute left-5 bottom-6 w-8 h-4 rounded-full bg-gradient-to-r from-pink-500 to-rose-400 filter blur-[9.5px] shadow-[0_0_12px_rgba(244,63,94,0.25)]"></div>
+                            <div class="absolute right-5 bottom-6 w-8 h-4 rounded-full bg-gradient-to-r from-rose-400 to-pink-500 filter blur-[9.5px] shadow-[0_0_12px_rgba(244,63,94,0.25)]"></div>
+                        </div>
+
+                        <!-- SVG render đôi mắt sắc nét và chớp tắt mượt mà -->
+                        <svg id="eye-svg" class="neon-eye-glow w-full h-full absolute inset-0 z-10" viewBox="0 0 184 116">
+                            <defs>
+                                <pattern id="led-pattern" width="100" height="4" patternUnits="userSpaceOnUse">
+                                    <rect width="100" height="2" fill="#000" opacity="0.35"/>
+                                </pattern>
+                            </defs>
+                            <!-- Mắt trái -->
+                            <path id="left-eye-path" fill="#00f0ff" class="scanline-mask" />
+                            <!-- Mắt phải -->
+                            <path id="right-eye-path" fill="#00f0ff" class="scanline-mask" />
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Khối cơ thể & cánh tay -->
+                <div class="relative w-[340px] h-[260px] flex justify-center">
+                    <!-- Cánh tay trái -->
+                    <div id="left-arm" class="eve-arm w-[38px] h-[190px] absolute left-[32px] top-[20px] origin-top -rotate-[10deg]"></div>
+                    
+                    <!-- Thân mình của EVE -->
+                    <div class="eve-body w-[200px] h-[260px] relative z-10">
+                        <!-- Bộ phát chùm tia quét ngực trái (Left Chest Scan Emitter) -->
+                        <div id="chest-scan-container" class="absolute top-[32px] left-[20px] pointer-events-none opacity-0 transition-opacity duration-300 z-25">
+                            <div class="relative w-[300px] h-[340px] overflow-visible">
+                                <svg viewBox="0 0 300 340" class="w-full h-full overflow-visible">
+                                    <defs>
+                                        <!-- Gradient tam giác 1 (Chùm chính ngoài) -->
+                                        <linearGradient id="beam-tri-1" x1="0%" y1="0%" x2="0%" y2="100%">
+                                            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.85"/>
+                                            <stop offset="25%" stop-color="#0284c7" stop-opacity="0.45"/>
+                                            <stop offset="100%" stop-color="#0369a1" stop-opacity="0.04"/>
+                                        </linearGradient>
+                                        <!-- Gradient tam giác 2 (Chùm quét phụ trong) -->
+                                        <linearGradient id="beam-tri-2" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+                                            <stop offset="20%" stop-color="#38bdf8" stop-opacity="0.6"/>
+                                            <stop offset="100%" stop-color="#0284c7" stop-opacity="0.08"/>
+                                        </linearGradient>
+                                        <!-- Vạch quét laser đáy -->
+                                        <linearGradient id="beam-line-glow" x1="0%" y1="0%" x2="100%" y2="0%">
+                                            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0"/>
+                                            <stop offset="50%" stop-color="#ffffff" stop-opacity="1"/>
+                                            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+                                        </linearGradient>
+                                    </defs>
+
+                                    <!-- 2 Hình tam giác chiếu tỏa xuống dưới chân EVE (Apex chính xác tại x=39, y=14 giữa chữ C và A) -->
+                                    <g class="scan-triangle-outer">
+                                        <polygon points="39,14 -45,340 215,340" fill="url(#beam-tri-1)" filter="drop-shadow(0 0 14px rgba(0,240,255,0.6))"/>
+                                        <line x1="-45" y1="340" x2="215" y2="340" stroke="url(#beam-line-glow)" stroke-width="3" filter="drop-shadow(0 0 8px #00f0ff)"/>
+                                    </g>
+
+                                    <g class="scan-triangle-inner">
+                                        <polygon points="39,14 -90,315 100,315" fill="url(#beam-tri-2)" filter="drop-shadow(0 0 16px rgba(56,189,248,0.8))"/>
+                                        <line x1="-90" y1="315" x2="100" y2="315" stroke="url(#beam-line-glow)" stroke-width="2.5" filter="drop-shadow(0 0 10px #38bdf8)"/>
+                                    </g>
+
+                                    <!-- Điểm phát sáng & Chữ SCANNING -->
+                                    <g class="scan-text-blink select-none">
+                                        <text y="17" font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" font-size="10.5" font-weight="900" letter-spacing="1.2" fill="#67e8f9">
+                                            <tspan x="15">SCANNING</tspan>
+                                        </text>
+                                        <circle cx="4" cy="14" r="1.8" fill="#00f0ff"/>
+                                        <circle cx="4" cy="14" r="3.5" fill="none" stroke="#00f0ff" stroke-width="1.2" opacity="0.85"/>
+                                    </g>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <!-- Huy hiệu Mầm Cây Sự Sống ngực phải (Right Chest Directive Plant Badge) -->
+                        <div id="plant-badge" class="absolute top-[32px] right-[40px] w-10 h-10 rounded-full bg-emerald-400 border-2 border-emerald-400 pointer-events-none opacity-0 transition-all duration-300 z-25 flex items-center justify-center">
+                            <i class="fa-solid fa-seedling text-white text-base drop-shadow-[0_0_6px_#ffffff]"></i>
+                        </div>
+                    </div>
+                    
+                    <!-- Cánh tay phải -->
+                    <div id="right-arm" class="eve-arm w-[38px] h-[190px] absolute right-[32px] top-[20px] origin-top rotate-[10deg]">
+                        <!-- Quả cầu năng lượng Plasma màu xanh gradient đơn giản ở đầu bàn tay -->
+                        <div id="blaster-glow" class="absolute bottom-0 left-1/2 -translate-x-1/2 w-9 h-9 rounded-full pointer-events-none opacity-0 transition-opacity duration-200 z-50 plasma-energy-orb"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Khung định vị lớp phủ bên ngoài cho bong bóng câu hỏi (Không bị ảnh hưởng bởi hào quang) -->
+            <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[215px] h-[181px] pointer-events-none z-30">
+                <!-- Bong bóng câu hỏi dạng đám mây (Thinking Cloud Bubble) -->
+                <div id="thinking-bubble" class="absolute -top-[130px] -right-12 opacity-0 scale-0 pointer-events-none transition-all duration-300 ease-out z-30">
+                    <div class="bubble-inner relative flex items-center justify-center w-[150px] h-[100px]">
+                        <!-- SVG Cloud hình đám mây trắng cân đối hoàn toàn cong mềm mại -->
+                        <svg viewBox="0 0 100 80" class="w-full h-full overflow-visible filter drop-shadow-[0_6px_16px_rgba(0,0,0,0.3)]">
+                            <path d="M 18,48 a 15,15 0 0,1 15,-15 a 22,22 0 0,1 38,-4 a 18,18 0 0,1 15,19 a 14,14 0 0,1 -6,22 a 18,18 0 0,1 -22,6 a 20,20 0 0,1 -30,-6 a 12,12 0 0,1 -10,-22 z" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+                        </svg>
+                        <!-- Dấu hỏi chấm hoặc chữ nội dung bong bóng -->
+                        <span id="bubble-text" class="absolute text-slate-800 text-5xl font-black" style="left: 50%; top: 60%; transform: translate(-50%, -50%);">?</span>
+                        
+                        <!-- Đường nối gồm 2 hình elip trắng sát nhau nhưng không chạm mây và đầu -->
+                        <div class="absolute bg-white border border-slate-200 rounded-full shadow-sm" style="width: 16px; height: 11px; bottom: -18px; left: 44px;"></div>
+                        <div class="absolute bg-white border border-slate-200 rounded-full shadow-sm" style="width: 9px; height: 6px; bottom: -28px; left: 30px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vết sáng chiếu hắt phản xạ cố định dưới sàn (Floor Spotlight) độc lập với chuyển động bay của EVE -->
+        <div class="floor-light w-[140px] h-[24px] absolute bottom-2 left-1/2 -translate-x-1/2 pointer-events-none z-0"></div>
+    </div>
+
+    <!-- Bảng điều khiển biểu cảm & hành động bố cục 3 cột bên phải màn hình -->
+    <div id="rightControlPanel" class="fixed right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 z-30 bg-slate-900/75 border border-slate-800 backdrop-blur-md p-2.5 rounded-2xl shadow-2xl max-h-[95vh] overflow-y-auto">
+        
+        <!-- Khung chứa 3 cột song song: Cột 1 là Biểu cảm, Cột 2 là Cử chỉ, Cột 3 là Kỹ năng -->
+        <div class="flex items-start gap-2">
+            <!-- Cột 1: Danh sách Biểu cảm (Expressions) -->
+            <div id="panel-expressions" class="flex flex-col gap-1.5 items-center">
+                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-0.5" title="Biểu cảm khuôn mặt">Cảm xúc</span>
+                
+                <!-- Nút Trạng thái Chờ (Idle) -->
+                <button onclick="setExpression('idle')" id="btn-idle" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Chế độ chờ (Idle)">
+                    <i class="fa-solid fa-robot text-sm"></i>
+                </button>
+
+                <!-- Nút Trạng thái Vui vẻ (Happy) -->
+                <button onclick="setExpression('happy')" id="btn-happy" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Vui vẻ (Happy)">
+                    <i class="fa-solid fa-face-laugh-beam text-sm"></i>
+                </button>
+
+                <!-- Nút Trạng thái Cười nhẹ (Smile) -->
+                <button onclick="setExpression('smile')" id="btn-smile" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-400 hover:text-teal-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Cười nhẹ (Smile)">
+                    <i class="fa-solid fa-face-smile text-sm"></i>
+                </button>
+
+                <!-- Nút Trạng thái Buồn (Sad) -->
+                <button onclick="setExpression('sad')" id="btn-sad" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 hover:text-rose-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Buồn (Sad)">
+                    <i class="fa-solid fa-face-frown text-sm"></i>
+                </button>
+
+                <!-- Nút Trạng thái Tức giận (Angry) -->
+                <button onclick="setExpression('angry')" id="btn-angry" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-red-400 hover:text-red-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Tức giận (Angry)">
+                    <i class="fa-solid fa-face-angry text-sm"></i>
+                </button>
+
+                <!-- Nút Trạng thái Xấu hổ (Shy / Embarrassed) -->
+                <button onclick="setExpression('shy')" id="btn-shy" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-pink-400 hover:text-pink-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Xấu hổ (Shy / Embarrassed)">
+                    <i class="fa-solid fa-face-flushed text-sm"></i>
+                </button>
+
+                <!-- Nút Thả tim / Yêu thương -->
+                <button onclick="triggerAction('love')" id="btn-action-love" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 hover:text-rose-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Thả tim / Yêu thương (Love)">
+                    <i class="fa-solid fa-heart text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Cột 2: Danh sách Cử chỉ tương tác (Gestures) -->
+            <div id="panel-gestures" class="flex flex-col gap-1.5 items-center">
+                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-0.5" title="Cử chỉ tương tác">Cử chỉ</span>
+
+                <!-- Nút Vẫy tay trái -->
+                <button onclick="triggerAction('wave-left')" id="btn-action-wave-left" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Vẫy tay trái (Wave Left)">
+                    <i class="fa-solid fa-hand text-sm"></i>
+                </button>
+
+                <!-- Nút Vẫy tay phải -->
+                <button onclick="triggerAction('wave-right')" id="btn-action-wave-right" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Vẫy tay phải (Wave Right)">
+                    <i class="fa-solid fa-hand text-sm inline-block scale-x-[-1]"></i>
+                </button>
+
+                <!-- Nút Xoay 360 độ -->
+                <button onclick="triggerAction('spin-360')" id="btn-action-spin-360" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-400 hover:text-purple-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Xoay 360° (Spin 360)">
+                    <i class="fa-solid fa-rotate text-sm"></i>
+                </button>
+
+                <!-- Nút Nghiêng đầu tò mò -->
+                <button onclick="triggerAction('curious')" id="btn-action-curious" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Nghiêng đầu tò mò (Curious)">
+                    <i class="fa-solid fa-question text-sm"></i>
+                </button>
+
+                <!-- Nút Nhún vai bối rối -->
+                <button onclick="triggerAction('shrug')" id="btn-action-shrug" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Nhún vai bối rối (Confused / Shrug)">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 15c1-3 3-5 6-4 3 1 2 5-1 5s-4-3-2-6c2-4 7-4 9-1 2 4-2 7-5 6-3-1-3-5 0-7 3-2 7 0 8 3 1 3-1 6-4 6-4 1-6-3-4-6 1-3 5-4 8-2" />
+                    </svg>
+                </button>
+
+                <!-- Nút Vỗ tay tán thưởng -->
+                <button onclick="triggerAction('clap')" id="btn-action-clap" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Vỗ tay tán thưởng (Clap)">
+                    <i class="fa-solid fa-hands-clapping text-sm"></i>
+                </button>
+
+                <!-- Nút Trạng thái Suy nghĩ (Thinking) -->
+                <button onclick="setExpression('thinking')" id="btn-thinking" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Suy nghĩ (Thinking)">
+                    <i class="fa-solid fa-brain text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Cột 3: Danh sách Kỹ năng & Đặc trưng WALL-E (Skills & Actions) -->
+            <div id="panel-skills" class="flex flex-col gap-1.5 items-center">
+                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-0.5" title="Kỹ năng đặc biệt">Kỹ năng</span>
+
+                <!-- Nút Quét Laser phân tích -->
+                <button onclick="triggerAction('scan')" id="btn-action-scan" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-cyan-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Quét laser phân tích (Scan Mode)">
+                    <i class="fa-solid fa-barcode text-sm"></i>
+                </button>
+
+                <!-- Nút Phát hiện mầm cây sự sống -->
+                <button onclick="triggerAction('directive-plant')" id="btn-action-plant" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-green-400 hover:text-green-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Mầm cây sự sống (Directive Plant)">
+                    <i class="fa-solid fa-seedling text-sm"></i>
+                </button>
+
+                <!-- Nút Pháo Plasma Tác chiến -->
+                <button onclick="triggerAction('blaster')" id="btn-action-blaster" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-400 hover:text-blue-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Pháo Plasma tác chiến (Plasma Blaster)">
+                    <i class="fa-solid fa-crosshairs text-sm"></i>
+                </button>
+
+                <!-- Nút Bay phản lực siêu thanh -->
+                <button onclick="triggerAction('jet-boost')" id="btn-action-boost" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-orange-400 hover:text-orange-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Bay phản lực siêu thanh (Jet Boost)">
+                    <i class="fa-solid fa-jet-fighter text-sm"></i>
+                </button>
+
+                <!-- Nút Trạng thái Ngủ (Sleeping) -->
+                <button onclick="setExpression('sleeping')" id="btn-sleeping" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Ngủ (Sleep)">
+                    <i class="fa-solid fa-moon text-sm"></i>
+                </button>
+
+                <!-- Nút Thức dậy (Wake up) -->
+                <button onclick="setExpression('wakeup')" id="btn-wakeup" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 flex items-center justify-center transition-all duration-200 shadow-md border border-slate-700/50" title="Thức dậy (Wake up)">
+                    <i class="fa-solid fa-sun text-sm animate-spin" style="animation-duration: 8s;"></i>
+                </button>
+
+                <!-- Nút Giả lập Nói nói -->
+                <button onclick="simulateSpeech()" id="btn-speech" class="w-9 h-9 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 flex items-center justify-center transition-all duration-200 shadow-md border border-sky-500/30" title="Giả lập giọng nói (Speech Test)">
+                    <i class="fa-solid fa-comment-dots text-sm animate-pulse"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Badge (Màn hình trạng thái góc dưới) -->
+    <div class="fixed bottom-4 left-4 z-20">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 text-[10px] tracking-wider">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+            <span class="text-slate-400 font-mono">EVE: </span>
+            <span id="system-status" class="text-emerald-400 font-bold font-mono">WAITING_COMMAND</span>
+        </div>
+    </div>
+
+    <audio id="audio-player" crossorigin="anonymous" class="hidden"></audio>
+
+    <script>
+        const audio = document.getElementById('audio-player');
+        const systemStatus = document.getElementById('system-status');
+        const leftArm = document.getElementById('left-arm');
+        const rightArm = document.getElementById('right-arm');
+        const eveVisor = document.getElementById('eve-visor');
+        const eveHead = document.getElementById('eve-head');
+        const leftEyePath = document.getElementById('left-eye-path');
+        const rightEyePath = document.getElementById('right-eye-path');
+        
+        let audioCtx;
+        let analyser;
+        let source;
+        let dataArray;
+        let currentExpression = 'idle';
+        let isActivated = false;
+        let isSpeakingSimulated = false;
+        let blinkTimeout;
+        let expressionCycleTimeout;
+        let inactivityTimeout;
+        let pendingExpression = null;
+        let isWakingUp = false;
+        const INACTIVITY_LIMIT = 300000; // 300 giây (5 phút)
+
+        const leftCenter = { x: 55, y: 58 };
+        const rightCenter = { x: 129, y: 58 };
+        const baseRadius = { rx: 24, ry: 16 };
+
+        function rotatePoint(x, y, cx, cy, degrees) {
+            const radians = (degrees * Math.PI) / 180;
+            const cos = Math.cos(radians);
+            const sin = Math.sin(radians);
+            const dx = x - cx;
+            const dy = y - cy;
+            return {
+                x: cx + dx * cos - dy * sin,
+                y: cy + dx * sin + dy * cos
+            };
+        }
+
+        function getEyePath(side, state, param = 0) {
+            const center = side === 'left' ? leftCenter : rightCenter;
+            const rx = baseRadius.rx;
+            const ry = baseRadius.ry;
+            const rot = side === 'left' ? 12 : -12;
+
+            if (state === 'happy' || state === 'love') {
+                const happyRx = rx + 3;
+                const topY = center.y - 30;
+                const innerY = center.y - 6;
+
+                const pLeft = rotatePoint(center.x - happyRx, center.y, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + happyRx, center.y, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, rot);
+                const pBottom = rotatePoint(center.x, innerY, center.x, center.y, rot);
+
+                return `M ${pLeft.x} ${pLeft.y} 
+                        Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} 
+                        Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            } 
+            else if (state === 'smile') {
+                const smileRx = rx + 1;
+                const pLeft = rotatePoint(center.x - smileRx, center.y, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + smileRx, center.y, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, center.y - 18, center.x, center.y, rot);
+                const pBottom = rotatePoint(center.x, center.y - 4, center.x, center.y, rot);
+                return `M ${pLeft.x} ${pLeft.y} Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            }
+            else if (state === 'sad') {
+                const sadRx = rx + 2;
+                const sadRot = side === 'left' ? -16 : 16;
+                const topY = center.y + 6;
+                const bottomY = center.y + 16;
+                
+                const pLeft = rotatePoint(center.x - sadRx, center.y + 2, center.x, center.y, sadRot);
+                const pRight = rotatePoint(center.x + sadRx, center.y + 2, center.x, center.y, sadRot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, sadRot);
+                const pBottom = rotatePoint(center.x, bottomY, center.x, center.y, sadRot);
+
+                return `M ${pLeft.x} ${pLeft.y} 
+                        Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} 
+                        Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            } 
+            else if (state === 'angry') {
+                const angryRx = rx + 2;
+                const angryRot = side === 'left' ? 22 : -22;
+                const topY = center.y + 6;
+                const bottomY = center.y + 16;
+                
+                const pLeft = rotatePoint(center.x - angryRx, center.y + 2, center.x, center.y, angryRot);
+                const pRight = rotatePoint(center.x + angryRx, center.y + 2, center.x, center.y, angryRot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, angryRot);
+                const pBottom = rotatePoint(center.x, bottomY, center.x, center.y, angryRot);
+
+                return `M ${pLeft.x} ${pLeft.y} 
+                        Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} 
+                        Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            } 
+            else if (state === 'thinking') {
+                const slantRot = side === 'left' ? 22 : -22;
+                const thinkRy = 9;
+                return getEllipsePath(center.x, center.y, rx, thinkRy, slantRot);
+            } 
+            else if (state === 'sleeping') {
+                const sleepRx = rx + 2;
+                const topY = center.y + 6;
+                const bottomY = center.y + 16;
+                
+                const pLeft = rotatePoint(center.x - sleepRx, center.y + 2, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + sleepRx, center.y + 2, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, rot);
+                const pBottom = rotatePoint(center.x, bottomY, center.x, center.y, rot);
+
+                return `M ${pLeft.x} ${pLeft.y} 
+                        Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} 
+                        Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            }
+            else if (state === 'wakeup') {
+                return getEllipsePath(center.x, center.y, rx + 3, ry + 5, rot);
+            }
+            else if (state === 'blink-half') {
+                return getEllipsePath(center.x, center.y, rx, 4, rot);
+            } 
+            else if (state === 'blink-closed') {
+                const sleepRx = rx + 1;
+                const topY = center.y + 4;
+                const bottomY = center.y + 10;
+                
+                const pLeft = rotatePoint(center.x - sleepRx, center.y + 2, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + sleepRx, center.y + 2, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, rot);
+                const pBottom = rotatePoint(center.x, bottomY, center.x, center.y, rot);
+
+                return `M ${pLeft.x} ${pLeft.y} 
+                        Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} 
+                        Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            } 
+            else if (state === 'speaking') {
+                const voiceRy = Math.max(5, ry + param);
+                return getEllipsePath(center.x, center.y, rx, voiceRy, rot);
+            } 
+            else if (state === 'target') {
+                const cx = center.x;
+                const cy = center.y;
+                return `M ${cx - 14} ${cy} A 14 14 0 1 0 ${cx + 14} ${cy} A 14 14 0 1 0 ${cx - 14} ${cy} Z
+                        M ${cx - 4} ${cy} A 4 4 0 1 0 ${cx + 4} ${cy} A 4 4 0 1 0 ${cx - 4} ${cy} Z
+                        M ${cx - 19} ${cy} L ${cx - 6} ${cy}
+                        M ${cx + 6} ${cy} L ${cx + 19} ${cy}
+                        M ${cx} ${cy - 19} L ${cx} ${cy - 6}
+                        M ${cx} ${cy + 6} L ${cx} ${cy + 19}`;
+            }
+            else if (state === 'curious') {
+                const curiousRot = side === 'left' ? 16 : -16;
+                return getEllipsePath(center.x, center.y, rx + 4, ry + 5, curiousRot);
+            }
+            else if (state === 'scan') {
+                return getEllipsePath(center.x, center.y + 2, rx + 3, ry + 4, rot);
+            }
+            else if (state === 'directive-plant' || state === 'plant') {
+                const smileRx = rx + 2;
+                const pLeft = rotatePoint(center.x - smileRx, center.y, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + smileRx, center.y, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, center.y - 20, center.x, center.y, rot);
+                const pBottom = rotatePoint(center.x, center.y - 4, center.x, center.y, rot);
+                return `M ${pLeft.x} ${pLeft.y} Q ${pTop.x} ${pTop.y} ${pRight.x} ${pRight.y} Q ${pBottom.x} ${pBottom.y} ${pLeft.x} ${pLeft.y} Z`;
+            }
+            else {
+                return getEllipsePath(center.x, center.y, rx, ry, rot);
+            }
+        }
+
+        function getEllipsePath(cx, cy, rx, ry, degrees) {
+            const radians = (degrees * Math.PI) / 180;
+            const cos = Math.cos(radians);
+            const sin = Math.sin(radians);
+            const x1 = cx + rx * cos;
+            const y1 = cy + rx * sin;
+            const x2 = cx - rx * cos;
+            const y2 = cy - rx * sin;
+            return `M ${x1} ${y1} A ${rx} ${ry} ${degrees} 0 0 ${x2} ${y2} A ${rx} ${ry} ${degrees} 0 0 ${x1} ${y1} Z`;
+        }
+
+        function updateEyes(speechVal = 0) {
+            leftEyePath.setAttribute('d', getEyePath('left', currentExpression, speechVal));
+            rightEyePath.setAttribute('d', getEyePath('right', currentExpression, speechVal));
+
+            const eyeSvg = document.getElementById('eye-svg');
+
+            if (['happy', 'love', 'smile', 'sleeping', 'blink-closed', 'angry', 'sad', 'target', 'directive-plant', 'plant'].includes(currentExpression)) {
+                let strokeWidth = (currentExpression === 'smile' || currentExpression === 'directive-plant' || currentExpression === 'plant') ? '5' : '6';
+                let strokeColor = '#00f0ff';
+                if (currentExpression === 'target') {
+                    strokeWidth = '2.5';
+                    strokeColor = '#38bdf8';
+                }
+
+                const strokeAttrs = { 'stroke': strokeColor, 'stroke-width': strokeWidth, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
+                Object.keys(strokeAttrs).forEach(key => {
+                    leftEyePath.setAttribute(key, strokeAttrs[key]);
+                    rightEyePath.setAttribute(key, strokeAttrs[key]);
+                });
+            } else {
+                ['stroke', 'stroke-width', 'stroke-linejoin', 'stroke-linecap'].forEach(attr => {
+                    leftEyePath.removeAttribute(attr);
+                    rightEyePath.removeAttribute(attr);
+                });
+            }
+
+            if (currentExpression === 'target') {
+                leftEyePath.setAttribute('fill', 'none');
+                rightEyePath.setAttribute('fill', 'none');
+                if (eyeSvg) eyeSvg.style.filter = 'drop-shadow(0 0 8px rgba(56, 189, 248, 0.9)) drop-shadow(0 0 20px rgba(2, 132, 199, 0.6))';
+            } else {
+                leftEyePath.setAttribute('fill', '#00f0ff');
+                rightEyePath.setAttribute('fill', '#00f0ff');
+                if (eyeSvg) {
+                    eyeSvg.style.filter = '';
+                }
+            }
+        }
+
+        function setupWebSocket() {
+            try {
+                const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+                const socket = new WebSocket(protocol + window.location.host);
+
+                socket.onopen = () => console.log("EVE đã đồng bộ dữ liệu thời gian thực!");
+                socket.onmessage = async (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.action === 'speak' && isActivated) {
+                        if (currentExpression === 'sleeping') {
+                            pendingExpression = 'speaking';
+                            triggerWakeUp();
+                            return;
+                        }
+                        systemStatus.innerText = "SPEAKING";
+                        systemStatus.className = "text-sky-400 font-bold font-mono";
+                        eveVisor.classList.remove('mt-5');
+                        eveVisor.classList.add('mt-3');
+                        initAudioContext();
+                        audio.src = data.url + '?t=' + new Date().getTime();
+                        await audio.play();
+                        currentExpression = 'speaking';
+                        if (window.thinkingTimeout) clearTimeout(window.thinkingTimeout);
+                        leftArm.classList.remove('rub-chin-anim', 'slow-transition');
+                        eveHead.classList.remove('giggle-anim');
+                        document.getElementById('thinking-bubble').classList.remove('show-bubble');
+                        leftArm.style.transform = 'rotate(-35deg) translateY(12px) translateX(0px)';
+                        rightArm.style.transform = 'rotate(35deg) translateY(12px) translateX(0px)';
+                        animateEyesWithVoice();
+                    } else if (data.action === 'expression' && isActivated) {
+                        setExpression(data.value);
+                    }
+                };
+                socket.onclose = () => setTimeout(setupWebSocket, 3000);
+            } catch (e) {
+                console.warn("Chạy offline hoặc chưa có server. Bảng điều khiển thử nghiệm bên phải luôn sẵn sàng!");
+            }
+        }
+
+        function initAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                source = audioCtx.createMediaElementSource(audio);
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+                analyser.fftSize = 32;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+            }
+        }
+
+        let actionTimeout = null;
+
+        function resetActionStyles() {
+            leftArm.classList.remove(
+                'wave-left-anim', 'spin-left-arm-anim', 'rub-chin-anim', 'slow-transition',
+                'scan-arm-left', 'plant-arm-left', 'blaster-support-arm', 'curious-arm-left',
+                'love-hug-left-anim', 'shrug-left-arm-anim', 'clap-left-arm-anim', 'jet-arm-left'
+            );
+            rightArm.classList.remove(
+                'wave-right-anim', 'spin-right-arm-anim', 'slow-transition',
+                'scan-arm-right', 'plant-arm-right', 'blaster-arm-active', 'curious-arm-right',
+                'love-hug-right-anim', 'shrug-right-arm-anim', 'clap-right-arm-anim', 'jet-arm-right'
+            );
+            leftArm.style.transform = '';
+            rightArm.style.transform = '';
+            leftArm.style.zIndex = '';
+            rightArm.style.zIndex = '';
+
+            eveHead.classList.remove('scan-head-tilt', 'curious-head-anim', 'shrug-head-anim', 'giggle-anim', 'jet-head-anim', 'shy-head-anim');
+            eveVisor.classList.remove('spin-visor-anim');
+            if (currentExpression !== 'thinking' && currentExpression !== 'angry' && currentExpression !== 'shy' && currentExpression !== 'blush') {
+                eveVisor.classList.remove('mt-7', 'mt-5');
+                eveVisor.classList.add('mt-3');
+            }
+            
+            const eveChar = document.querySelector('.eve-character');
+            if (eveChar) {
+                eveChar.classList.remove(
+                    'angry-rumble-anim', 'plant-joy-anim', 'blaster-recoil-anim',
+                    'clap-body-anim', 'jet-body-anim'
+                );
+            }
+            const floorLight = document.querySelector('.floor-light');
+            if (floorLight) floorLight.classList.remove('jet-floor-active', 'plant-floor-active');
+
+            const avatar = document.getElementById('eve-avatar');
+            if (avatar) avatar.classList.remove('plant-aura-pulse');
+
+            const chestScan = document.getElementById('chest-scan-container');
+            if (chestScan) chestScan.classList.remove('chest-scan-active');
+
+            const plantBadge = document.getElementById('plant-badge');
+            if (plantBadge) plantBadge.classList.remove('plant-badge-active');
+
+            const blushCheeks = document.getElementById('blush-cheeks');
+            if (blushCheeks) blushCheeks.classList.remove('blush-cheeks-active');
+
+            const bubble = document.getElementById('thinking-bubble');
+            if (bubble) bubble.classList.remove('show-bubble');
+
+            const blasterGlow = document.getElementById('blaster-glow');
+            if (blasterGlow) blasterGlow.classList.remove('blaster-glow-active');
+
+            const eyeSvg = document.getElementById('eye-svg');
+            if (eyeSvg) {
+                eyeSvg.style.filter = '';
+            }
+            leftEyePath.setAttribute('fill', '#00f0ff');
+            rightEyePath.setAttribute('fill', '#00f0ff');
+        }
+
+        function triggerAction(actionName) {
+            if (!isActivated || isWakingUp) return;
+            if (currentExpression === 'sleeping') {
+                pendingExpression = 'idle';
+                triggerWakeUp();
+                return;
+            }
+
+            if (actionTimeout) clearTimeout(actionTimeout);
+            resetActionStyles();
+
+            const eveChar = document.querySelector('.eve-character');
+            const floorLight = document.querySelector('.floor-light');
+            const chestScan = document.getElementById('chest-scan-container');
+            const plantBadge = document.getElementById('plant-badge');
+            const blushCheeks = document.getElementById('blush-cheeks');
+            const blasterGlow = document.getElementById('blaster-glow');
+
+            if (actionName === 'wave-left') {
+                systemStatus.innerText = "WAVE_LEFT_ACTION";
+                systemStatus.className = "text-sky-400 font-bold font-mono";
+                currentExpression = 'smile';
+                updateEyes();
+                highlightControlButtons('btn-action-wave-left');
+                leftArm.classList.add('wave-left-anim');
+                actionTimeout = setTimeout(() => { resetActionStyles(); setExpression('idle'); }, 3200);
+            } else if (actionName === 'wave-right') {
+                systemStatus.innerText = "WAVE_RIGHT_ACTION";
+                systemStatus.className = "text-sky-400 font-bold font-mono";
+                currentExpression = 'smile';
+                updateEyes();
+                highlightControlButtons('btn-action-wave-right');
+                rightArm.classList.add('wave-right-anim');
+                actionTimeout = setTimeout(() => { resetActionStyles(); setExpression('idle'); }, 3200);
+            } else if (actionName === 'spin-360') {
+                systemStatus.innerText = "SPIN_360_ACTION";
+                systemStatus.className = "text-purple-400 font-bold font-mono";
+                currentExpression = 'smile';
+                updateEyes();
+                highlightControlButtons('btn-action-spin-360');
+                eveVisor.classList.add('spin-visor-anim');
+                leftArm.classList.add('spin-left-arm-anim');
+                rightArm.classList.add('spin-right-arm-anim');
+                actionTimeout = setTimeout(() => { resetActionStyles(); setExpression('idle'); }, 2500);
+            } else if (actionName === 'scan') {
+                systemStatus.innerText = "SCANNING_ENVIRONMENT";
+                systemStatus.className = "text-cyan-400 font-bold font-mono";
+                currentExpression = 'scan';
+                eveVisor.classList.remove('mt-3', 'mt-5');
+                eveVisor.classList.add('mt-7');
+                updateEyes();
+                highlightControlButtons('btn-action-scan');
+                eveHead.classList.add('scan-head-tilt');
+                leftArm.classList.add('scan-arm-left');
+                rightArm.classList.add('scan-arm-right');
+                if (chestScan) chestScan.classList.add('chest-scan-active');
+                actionTimeout = setTimeout(() => { resetActionStyles(); setExpression('idle'); }, 4200);
+            } else if (actionName === 'directive-plant' || actionName === 'plant') {
+                systemStatus.innerText = "DIRECTIVE_PLANT_FOUND";
+                systemStatus.className = "text-emerald-400 font-bold font-mono";
+                currentExpression = 'directive-plant';
+                eveVisor.classList.remove('mt-7', 'mt-5');
+                eveVisor.classList.add('mt-3');
+                updateEyes();
+                highlightControlButtons('btn-action-plant');
+                const avatar = document.getElementById('eve-avatar');
+                if (avatar) avatar.classList.add('plant-aura-pulse');
+                leftArm.classList.add('plant-arm-left');
+                rightArm.classList.add('plant-arm-right');
+                if (plantBadge) plantBadge.classList.add('plant-badge-active');
+                if (floorLight) floorLight.classList.add('plant-floor-active');
+                actionTimeout = setTimeout(() => { resetActionStyles(); setExpression('idle'); }, 4200);
+            } else if (actionName === 'blaster') {
+                systemStatus.innerText = "BLASTER_COMBAT_READY";
+                systemStatus.className = "text-sky-400 font-bold font-mono";
+                currentExpression = 'angry';
+                eveVisor.classList.remove('mt-3', 'mt-5');
+                eveVisor.classList.add('mt-7');
+                updateEyes();
+                highlightControlButtons('btn-action-blaster');
+                leftArm.classList.add('blaster-support-arm');
+                rightArm.classList.add('blaster-arm-active');
+                if (blasterGlow) blasterGlow.classList.add('blaster-glow-active');
+                setTimeout(() => {
+                    if (eveChar) eveChar.classList.add('blaster-recoil-anim');
+                }, 500);
+                actionTimeout = setTimeout(() => { resetActionStyles(); setExpression('idle'); }, 4000);
+            } else if (actionName === 'curious') {
+                systemStatus.innerText = "CURIOUS_QUERY";
+                systemStatus.className = "text-amber-400 font-bold font-mono";
+                currentExpression = 'curious';
+                updateEyes();
+                highlightControlButtons('btn-action-curious');
+                eveHead.classList.add('curious-head-anim');
+                leftArm.classList.add('curious-arm-left');
+                rightArm.classList.add('curious-arm-right');
+                actionTimeout = setTimeout(() => { resetActionStyles(); setExpression('idle'); }, 3500);
+            } else if (actionName === 'love') {
+                systemStatus.innerText = "EVE_LOVES_YOU";
+                systemStatus.className = "text-rose-400 font-bold font-mono";
+                currentExpression = 'love';
+                updateEyes();
+                highlightControlButtons('btn-action-love');
+                leftArm.classList.add('love-hug-left-anim');
+                rightArm.classList.add('love-hug-right-anim');
+                if (blushCheeks) blushCheeks.classList.add('blush-cheeks-active');
+                
+                const bubble = document.getElementById('thinking-bubble');
+                const bubbleText = document.getElementById('bubble-text');
+                if (bubbleText) {
+                    bubbleText.innerHTML = '<i class="fa-solid fa-heart text-rose-500 filter drop-shadow-[0_0_8px_rgba(244,63,94,0.8)] animate-pulse"></i>';
+                    bubbleText.className = "absolute text-4xl";
+                }
+                if (bubble) bubble.classList.add('show-bubble');
+
+                actionTimeout = setTimeout(() => { resetActionStyles(); setExpression('idle'); }, 4000);
+            } else if (actionName === 'shrug') {
+                systemStatus.innerText = "CONFUSED_SHRUG";
+                systemStatus.className = "text-indigo-400 font-bold font-mono";
+                currentExpression = 'thinking';
+                updateEyes();
+                highlightControlButtons('btn-action-shrug');
+                eveHead.classList.add('shrug-head-anim');
+                leftArm.classList.add('shrug-left-arm-anim');
+                rightArm.classList.add('shrug-right-arm-anim');
+                
+                const bubble = document.getElementById('thinking-bubble');
+                const bubbleText = document.getElementById('bubble-text');
+                if (bubbleText) {
+                    bubbleText.innerHTML = `<svg class="w-11 h-11 text-slate-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 15c1-3 3-5 6-4 3 1 2 5-1 5s-4-3-2-6c2-4 7-4 9-1 2 4-2 7-5 6-3-1-3-5 0-7 3-2 7 0 8 3 1 3-1 6-4 6-4 1-6-3-4-6 1-3 5-4 8-2" />
+                    </svg>`;
+                    bubbleText.className = "absolute flex items-center justify-center";
+                }
+                if (bubble) bubble.classList.add('show-bubble');
+
+                actionTimeout = setTimeout(() => { resetActionStyles(); setExpression('idle'); }, 3200);
+            } else if (actionName === 'clap') {
+                systemStatus.innerText = "APPLAUSE_CHEERING";
+                systemStatus.className = "text-emerald-400 font-bold font-mono";
+                currentExpression = 'happy';
+                updateEyes();
+                highlightControlButtons('btn-action-clap');
+                leftArm.classList.add('clap-left-arm-anim');
+                rightArm.classList.add('clap-right-arm-anim');
+                if (eveChar) eveChar.classList.add('clap-body-anim');
+                actionTimeout = setTimeout(() => { resetActionStyles(); setExpression('idle'); }, 3200);
+            } else if (actionName === 'jet-boost' || actionName === 'boost') {
+                systemStatus.innerText = "SUPERSONIC_JET_BOOST";
+                systemStatus.className = "text-orange-400 font-bold font-mono";
+                currentExpression = 'smile';
+                updateEyes();
+                highlightControlButtons('btn-action-boost');
+                if (eveChar) eveChar.classList.add('jet-body-anim');
+                eveHead.classList.add('jet-head-anim');
+                leftArm.classList.add('jet-arm-left');
+                rightArm.classList.add('jet-arm-right');
+                if (floorLight) floorLight.classList.add('jet-floor-active');
+                actionTimeout = setTimeout(() => { resetActionStyles(); setExpression('idle'); }, 5400);
+            } else if (actionName === 'angry') {
+                setExpression('angry');
+                highlightControlButtons('btn-action-angry');
+            } else if (actionName === 'shy' || actionName === 'blush') {
+                setExpression('shy');
+            }
+        }
+
+        function setExpression(exp) {
+            if (!isActivated) return;
+            const actionList = [
+                'wave-left', 'wave-right', 'spin-360', 'scan',
+                'directive-plant', 'plant', 'blaster', 'curious',
+                'love', 'shrug', 'clap', 'jet-boost', 'boost'
+            ];
+            if (actionList.includes(exp)) {
+                triggerAction(exp);
+                return;
+            }
+            if (currentExpression === 'sleeping' && exp !== 'sleeping' && exp !== 'wakeup' && !isWakingUp) {
+                pendingExpression = exp;
+                triggerWakeUp();
+                return;
+            }
+            if (exp === 'wakeup') {
+                triggerWakeUp();
+                return;
+            }
+            if (isWakingUp) return;
+
+            currentExpression = exp;
+            isSpeakingSimulated = false;
+            audio.pause();
+            resetInactivityTimer();
+            resetActionStyles();
+            if (actionTimeout) clearTimeout(actionTimeout);
+
+            if (window.thinkingTimeout) clearTimeout(window.thinkingTimeout);
+            leftArm.classList.remove('rub-chin-anim', 'slow-transition');
+            eveHead.classList.remove('giggle-anim');
+            document.getElementById('thinking-bubble').classList.remove('show-bubble');
+            if (window.auraTimeout) clearTimeout(window.auraTimeout);
+            const avatar = document.getElementById('eve-avatar');
+            if (avatar) avatar.classList.remove('aura-fadein', 'aura-pulse', 'plant-aura-pulse');
+            
+            leftArm.style.opacity = '1';
+            rightArm.style.opacity = '1';
+            leftArm.style.transform = 'rotate(-10deg) translateY(20px) translateX(0px)';
+            rightArm.style.transform = 'rotate(10deg) translateY(20px) translateX(0px)';
+            leftEyePath.style.opacity = '1';
+            rightEyePath.style.opacity = '1';
+
+            if (exp === 'thinking' || exp === 'angry' || exp === 'shy' || exp === 'blush') {
+                eveVisor.classList.remove('mt-3', 'mt-5');
+                eveVisor.classList.add('mt-7');
+            } else if (exp === 'sad') {
+                eveVisor.classList.remove('mt-3', 'mt-7');
+                eveVisor.classList.add('mt-5');
+            } else {
+                eveVisor.classList.remove('mt-7', 'mt-5');
+                eveVisor.classList.add('mt-3');
+            }
+
+            if (exp === 'happy') {
+                systemStatus.innerText = "HAPPY_STATE";
+                systemStatus.className = "text-emerald-400 font-bold font-mono";
+                rightArm.style.transform = 'rotate(110deg) translateY(-25px) translateX(0px)';
+                eveHead.classList.add('giggle-anim');
+            } else if (exp === 'smile') {
+                systemStatus.innerText = "SMILE_STATE";
+                systemStatus.className = "text-teal-400 font-bold font-mono";
+                leftArm.style.transform = 'rotate(-15deg) translateY(18px) translateX(2px)';
+                rightArm.style.transform = 'rotate(15deg) translateY(18px) translateX(-2px)';
+            } else if (exp === 'sad') {
+                systemStatus.innerText = "SAD_STATE";
+                systemStatus.className = "text-rose-400 font-bold font-mono";
+                leftArm.style.transform = 'rotate(-22deg) translateY(20px) translateX(-4px)';
+                rightArm.style.transform = 'rotate(22deg) translateY(20px) translateX(4px)';
+                const bubbleText = document.getElementById('bubble-text');
+                bubbleText.innerText = '💧';
+                bubbleText.className = "absolute text-slate-800 text-4xl font-black";
+                document.getElementById('thinking-bubble').classList.add('show-bubble');
+            } else if (exp === 'angry') {
+                systemStatus.innerText = "ANGRY_STATE";
+                systemStatus.className = "text-rose-400 font-bold font-mono";
+                leftArm.style.transform = 'rotate(-20deg) translateY(22px) translateX(-4px)';
+                rightArm.style.transform = 'rotate(20deg) translateY(22px) translateX(4px)';
+                actionTimeout = setTimeout(() => {
+                    if (currentExpression === 'angry') {
+                        resetActionStyles();
+                        setExpression('idle');
+                    }
+                }, 3500);
+            } else if (exp === 'shy' || exp === 'blush') {
+                systemStatus.innerText = "SHY_EMBARRASSED";
+                systemStatus.className = "text-pink-400 font-bold font-mono";
+                leftArm.style.transform = 'rotate(-35deg) translateY(12px) translateX(0px)';
+                rightArm.style.transform = 'rotate(35deg) translateY(12px) translateX(0px)';
+                const blushCheeks = document.getElementById('blush-cheeks');
+                if (blushCheeks) blushCheeks.classList.add('blush-cheeks-active');
+                eveHead.classList.add('shy-head-anim');
+                actionTimeout = setTimeout(() => {
+                    if (currentExpression === 'shy' || currentExpression === 'blush') {
+                        resetActionStyles();
+                        setExpression('idle');
+                    }
+                }, 4000);
+            } else if (exp === 'thinking') {
+                systemStatus.innerText = "THINKING_STATE";
+                systemStatus.className = "text-amber-400 font-bold font-mono";
+                leftArm.classList.add('slow-transition');
+                leftArm.style.transform = 'rotate(-122deg) translateY(-41px) translateX(-25px)';
+                const bubbleText = document.getElementById('bubble-text');
+                bubbleText.innerText = '?';
+                bubbleText.className = "absolute text-slate-800 text-5xl font-black";
+                document.getElementById('thinking-bubble').classList.add('show-bubble');
+                window.thinkingTimeout = setTimeout(() => {
+                    if (currentExpression === 'thinking') {
+                        leftArm.classList.remove('thinking-pose');
+                        leftArm.classList.add('rub-chin-anim');
+                    }
+                }, 1000);
+            } else if (exp === 'sleeping') {
+                systemStatus.innerText = "SLEEPING_STATE";
+                systemStatus.className = "text-indigo-400 font-bold font-mono";
+                const avatar = document.getElementById('eve-avatar');
+                if (avatar) avatar.classList.add('aura-pulse');
+                updateEyes();
+                setTimeout(() => {
+                    if (currentExpression === 'sleeping') {
+                        leftEyePath.style.opacity = '0';
+                        rightEyePath.style.opacity = '0';
+                    }
+                }, 50);
+                leftArm.style.transform = 'rotate(-15deg) translateY(20px) translateX(12px)';
+                rightArm.style.transform = 'rotate(15deg) translateY(20px) translateX(-12px)';
+                setTimeout(() => {
+                    if (currentExpression === 'sleeping') {
+                        leftArm.style.opacity = '0';
+                        rightArm.style.opacity = '0';
+                    }
+                }, 50);
+                const bubbleText = document.getElementById('bubble-text');
+                bubbleText.innerText = 'Zzz';
+                bubbleText.className = "absolute text-slate-800 text-3xl font-black";
+                document.getElementById('thinking-bubble').classList.add('show-bubble');
+            } else if (exp === 'speaking') {
+                systemStatus.innerText = "SPEAKING_STATE";
+                systemStatus.className = "text-sky-400 font-bold font-mono";
+                leftArm.style.transform = 'rotate(-35deg) translateY(12px) translateX(0px)';
+                rightArm.style.transform = 'rotate(35deg) translateY(12px) translateX(0px)';
+                isSpeakingSimulated = true;
+                let phase = 0;
+                function runSpeakingLoop() {
+                    if (currentExpression === 'speaking' && isSpeakingSimulated) {
+                        phase += 0.28;
+                        const volume = 0.6;
+                        let baseWave = Math.sin(phase) * Math.cos(phase * 0.75);
+                        let targetAmp = Math.max(-10, baseWave * 14 * volume + (Math.random() * 4 - 2) * volume);
+                        updateEyes(targetAmp);
+                        requestAnimationFrame(runSpeakingLoop);
+                    }
+                }
+                runSpeakingLoop();
+            } else {
+                systemStatus.innerText = "WAITING_COMMAND";
+                systemStatus.className = "text-emerald-400 font-bold font-mono";
+            }
+
+            updateEyes();
+            highlightControlButtons();
+        }
+
+        function highlightControlButtons(activeOverride = null) {
+            const allBtns = [
+                'btn-idle', 'btn-happy', 'btn-smile', 'btn-sad', 'btn-angry', 'btn-shy', 'btn-thinking', 'btn-sleeping', 'btn-wakeup',
+                'btn-action-wave-left', 'btn-action-wave-right', 'btn-action-spin-360',
+                'btn-action-curious', 'btn-action-love', 'btn-action-shrug', 'btn-action-clap',
+                'btn-action-scan', 'btn-action-plant', 'btn-action-blaster', 'btn-action-boost',
+                'btn-speech'
+            ];
+
+            const exprMap = {
+                idle: 'btn-idle',
+                happy: 'btn-happy',
+                smile: 'btn-smile',
+                sad: 'btn-sad',
+                angry: 'btn-angry',
+                shy: 'btn-shy',
+                blush: 'btn-shy',
+                thinking: 'btn-thinking',
+                sleeping: 'btn-sleeping',
+                wakeup: 'btn-wakeup'
+            };
+
+            const targetActive = activeOverride || exprMap[currentExpression];
+
+            allBtns.forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) {
+                    if (id === targetActive) {
+                        btn.classList.add('bg-sky-500/20', 'border-sky-500');
+                    } else {
+                        btn.classList.remove('bg-sky-500/20', 'border-sky-500');
+                    }
+                }
+            });
+        }
+
+        function triggerWakeUp() {
+            if (isWakingUp) return;
+            isWakingUp = true;
+            currentExpression = 'wakeup';
+            highlightControlButtons();
+            
+            if (window.auraTimeout) clearTimeout(window.auraTimeout);
+            const eveAvatar = document.getElementById('eve-avatar');
+            if (eveAvatar) eveAvatar.classList.remove('aura-fadein', 'aura-pulse');
+            const eveChar = document.querySelector('.eve-character');
+            eveChar.style.animation = 'startle 0.6s ease-out';
+            setTimeout(() => { eveChar.style.animation = 'hover 4s ease-in-out infinite'; }, 600);
+            
+            leftArm.style.transition = 'transform 0.12s cubic-bezier(0.25, 1.5, 0.5, 1.3), opacity 0.08s ease-out';
+            rightArm.style.transition = 'transform 0.12s cubic-bezier(0.25, 1.5, 0.5, 1.3), opacity 0.08s ease-out';
+            leftEyePath.style.transition = 'opacity 0.2s ease-out';
+            rightEyePath.style.transition = 'opacity 0.2s ease-out';
+
+            leftEyePath.style.opacity = '1';
+            rightEyePath.style.opacity = '1';
+            updateEyes();
+            
+            leftArm.style.opacity = '1';
+            rightArm.style.opacity = '1';
+            leftArm.style.transform = 'rotate(35deg) translateY(-20px) translateX(12px)';
+            rightArm.style.transform = 'rotate(-35deg) translateY(-20px) translateX(-12px)';
+            
+            const bubbleText = document.getElementById('bubble-text');
+            bubbleText.innerText = '!';
+            bubbleText.className = "absolute text-slate-800 text-5xl font-black";
+            document.getElementById('thinking-bubble').classList.add('show-bubble');
+            
+            setTimeout(() => {
+                if (currentExpression === 'wakeup') {
+                    leftEyePath.setAttribute('d', '');
+                    rightEyePath.setAttribute('d', '');
+                }
+            }, 500);
+            setTimeout(() => {
+                if (currentExpression === 'wakeup') updateEyes();
+            }, 650);
+            setTimeout(() => {
+                if (currentExpression === 'wakeup') {
+                    leftEyePath.setAttribute('d', '');
+                    rightEyePath.setAttribute('d', '');
+                }
+            }, 800);
+            setTimeout(() => {
+                if (currentExpression === 'wakeup') {
+                    updateEyes();
+                    leftArm.style.transition = 'transform 1.2s cubic-bezier(0.25, 1, 0.3, 1)';
+                    rightArm.style.transition = 'transform 1.2s cubic-bezier(0.25, 1, 0.3, 1)';
+                    leftArm.style.transform = 'rotate(-10deg) translateY(20px) translateX(0px)';
+                    rightArm.style.transform = 'rotate(10deg) translateY(20px) translateX(0px)';
+                }
+            }, 950);
+            setTimeout(() => {
+                if (currentExpression === 'wakeup') {
+                    isWakingUp = false;
+                    leftArm.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 1.5s ease-in-out';
+                    rightArm.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 1.5s ease-in-out';
+                    leftEyePath.style.transition = 'opacity 1.5s ease-in-out';
+                    rightEyePath.style.transition = 'opacity 1.5s ease-in-out';
+
+                    const nextExp = pendingExpression || 'idle';
+                    pendingExpression = null;
+                    setExpression(nextExp);
+                } else {
+                    isWakingUp = false;
+                    pendingExpression = null;
+                }
+            }, 2200);
+        }
+
+        function startNaturalBlinking() {
+            const blinkLoop = () => {
+                if (currentExpression === 'idle') {
+                    const originalExp = currentExpression;
+                    currentExpression = 'blink-half';
+                    updateEyes();
+                    setTimeout(() => {
+                        if (currentExpression === 'blink-half') {
+                            currentExpression = 'blink-closed';
+                            updateEyes();
+                            setTimeout(() => {
+                                if (currentExpression === 'blink-closed') {
+                                    currentExpression = originalExp;
+                                    updateEyes();
+                                }
+                            }, 80);
+                        }
+                    }, 40);
+                }
+                blinkTimeout = setTimeout(blinkLoop, 3000 + Math.random() * 3000);
+            };
+            blinkTimeout = setTimeout(blinkLoop, 4000);
+        }
+
+        function animateEyesWithVoice() {
+            if (currentExpression === 'speaking' && !audio.paused) {
+                analyser.getByteFrequencyData(dataArray);
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                let average = sum / dataArray.length;
+                let targetAmplitude = (average / 255) * 16;
+                updateEyes(targetAmplitude);
+                requestAnimationFrame(animateEyesWithVoice);
+            } else if (currentExpression === 'speaking') {
+                setExpression('idle');
+            }
+        }
+
+        function simulateSpeech(durationMs = 4500) {
+            if (!isActivated) return;
+            setExpression('idle');
+            currentExpression = 'speaking';
+            isSpeakingSimulated = true;
+            systemStatus.innerText = "SPEAKING_SIMULATION";
+            systemStatus.className = "text-sky-400 font-bold font-mono";
+            leftArm.style.transform = 'rotate(-35deg) translateY(12px) translateX(0px)';
+            rightArm.style.transform = 'rotate(35deg) translateY(12px) translateX(0px)';
+            let phase = 0;
+            function runSimulation() {
+                if (currentExpression === 'speaking' && isSpeakingSimulated) {
+                    phase += 0.25;
+                    const volume = 0.55;
+                    let baseWave = Math.sin(phase) * Math.cos(phase * 0.7);
+                    let targetAmp = Math.max(-10, baseWave * 12 * volume + (Math.random() * 4 - 2) * volume);
+                    updateEyes(targetAmp);
+                    requestAnimationFrame(runSimulation);
+                }
+            }
+            runSimulation();
+            setTimeout(() => {
+                if (isSpeakingSimulated) setExpression('idle');
+            }, durationMs);
+        }
+
+        function startRandomExpressions() {
+            const nextCycle = () => {
+                if (isActivated && currentExpression === 'idle' && !isSpeakingSimulated && (audio.paused || audio.ended)) {
+                    const choice = Math.floor(Math.random() * 6);
+                    if (choice === 1) {
+                        setExpression('happy');
+                        setTimeout(() => { if (currentExpression === 'happy') setExpression('idle'); }, 3000);
+                    } else if (choice === 2) {
+                        setExpression('smile');
+                        setTimeout(() => { if (currentExpression === 'smile') setExpression('idle'); }, 3500);
+                    } else if (choice === 3) {
+                        setExpression('sad');
+                        setTimeout(() => { if (currentExpression === 'sad') setExpression('idle'); }, 3500);
+                    } else if (choice === 4) {
+                        setExpression('thinking');
+                        setTimeout(() => { if (currentExpression === 'thinking') setExpression('idle'); }, 5000);
+                    } else if (choice === 5) simulateSpeech(8000);
+                }
+                expressionCycleTimeout = setTimeout(nextCycle, 10000);
+            };
+            expressionCycleTimeout = setTimeout(nextCycle, 10000);
+        }
+
+        function resetInactivityTimer() {
+            if (inactivityTimeout) clearTimeout(inactivityTimeout);
+            if (currentExpression !== 'sleeping') {
+                inactivityTimeout = setTimeout(() => { setExpression('sleeping'); }, INACTIVITY_LIMIT);
+            }
+        }
+
+        audio.onended = () => setExpression('idle');
+
+        isActivated = true;
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialExpr = urlParams.get('expr') || urlParams.get('state');
+        const initialAction = urlParams.get('action');
+        if (initialAction) {
+            triggerAction(initialAction);
+        } else if (initialExpr) {
+            setExpression(initialExpr);
+        } else {
+            setExpression('idle');
+        }
+        setupWebSocket();
+        startNaturalBlinking();
+        startRandomExpressions();
+
+        window.addEventListener('click', resetInactivityTimer);
+        window.addEventListener('mousemove', resetInactivityTimer);
+        window.addEventListener('keydown', resetInactivityTimer);
+        window.addEventListener('touchstart', resetInactivityTimer);
+
+        window.setExpression = setExpression;
+        window.triggerAction = triggerAction;
+        window.simulateSpeech = simulateSpeech;
+        window.triggerWakeUp = triggerWakeUp;
+        window.setControlsVisibility = function(visible) {
+            const panel = document.getElementById('rightControlPanel');
+            if (panel) {
+                panel.style.display = visible ? 'flex' : 'none';
+            }
+        };
+
+        // Lắng nghe sự kiện từ React Native WebView
+        function handleRNMessage(event) {
+            try {
+                const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                if (data.type === 'SET_EXPRESSION') {
+                    setExpression(data.payload);
+                } else if (data.type === 'TRIGGER_ACTION') {
+                    triggerAction(data.payload);
+                } else if (data.type === 'SPEAK_SIMULATION') {
+                    simulateSpeech(data.payload || 4500);
+                } else if (data.type === 'WAKEUP') {
+                    triggerWakeUp();
+                }
+            } catch (e) {
+                console.error("RN Message parsing error", e);
+            }
+        }
+        window.addEventListener('message', handleRNMessage);
+        document.addEventListener('message', handleRNMessage);
+
+        // Gửi sự kiện khi người dùng chạm vào màn hình / EVE
+        document.body.addEventListener('click', (e) => {
+            if (e.target.closest('#rightControlPanel') || e.target.closest('button')) {
+                return;
+            }
+            if (window.AndroidEVE && typeof window.AndroidEVE.onRobotTouched === 'function') {
+                window.AndroidEVE.onRobotTouched();
+            }
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'CANVAS_TAP',
+                    currentExpression: currentExpression
+                }));
+            }
+        });
+    </script>
+</body>
+</html>
