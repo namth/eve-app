@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View, ScrollView } from 'react-native';
 import { EVEExpression } from '../types/api';
 
 interface Props {
@@ -19,10 +19,14 @@ export const ControlPanel: React.FC<Props> = ({
     { key: 'happy', label: 'Happy', icon: '😄' },
     { key: 'smile', label: 'Smile', icon: '😊' },
     { key: 'sad', label: 'Sad', icon: '🥺' },
+    { key: 'angry', label: 'Angry', icon: '😡' },
     { key: 'thinking', label: 'Think', icon: '🧠' },
-    { key: 'speaking', label: 'Speak', icon: '💬' },
+    { key: 'wave-left', label: 'Wave L', icon: '👋' },
+    { key: 'wave-right', label: 'Wave R', icon: '🖐️' },
+    { key: 'spin-360', label: 'Spin 360', icon: '🔄' },
     { key: 'sleeping', label: 'Sleep', icon: '🌙' },
     { key: 'wakeup', label: 'Wakeup', icon: '☀️' },
+    { key: 'speaking', label: 'Speak', icon: '💬' },
   ];
 
   return (
@@ -37,20 +41,26 @@ export const ControlPanel: React.FC<Props> = ({
         </TouchableOpacity>
       )}
 
-      {expressions.map((item) => {
-        const isActive = currentExpression === item.key;
-        return (
-          <TouchableOpacity
-            key={item.key}
-            activeOpacity={0.7}
-            style={[styles.btn, isActive && styles.btnActive]}
-            onPress={() => onSelectExpression(item.key)}
-          >
-            <Text style={styles.btnIcon}>{item.icon}</Text>
-            {isActive && <Text style={styles.btnLabelActive}>{item.label}</Text>}
-          </TouchableOpacity>
-        );
-      })}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
+      >
+        {expressions.map((item) => {
+          const isActive = currentExpression === item.key;
+          return (
+            <TouchableOpacity
+              key={item.key}
+              activeOpacity={0.7}
+              style={[styles.btn, isActive && styles.btnActive]}
+              onPress={() => onSelectExpression(item.key)}
+            >
+              <Text style={styles.btnIcon}>{item.icon}</Text>
+              {isActive && <Text style={styles.btnLabelActive}>{item.label}</Text>}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 };
@@ -59,10 +69,19 @@ const styles = StyleSheet.create({
   floatingPanel: {
     position: 'absolute',
     right: 12,
-    top: 130,
+    top: 110,
     zIndex: 50,
-    gap: 10,
+    maxHeight: '75%',
     alignItems: 'flex-end',
+    gap: 8,
+  },
+  scrollView: {
+    maxHeight: 480,
+  },
+  scrollContent: {
+    gap: 8,
+    alignItems: 'flex-end',
+    paddingVertical: 4,
   },
   btn: {
     flexDirection: 'row',

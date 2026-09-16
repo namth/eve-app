@@ -90,6 +90,15 @@ export const useEVEState = (isFidgetBlocked?: () => boolean) => {
       } else if (newExp === 'sleeping') {
         if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
         stopFidget();
+      } else if (['wave-left', 'wave-right', 'spin-360', 'angry'].includes(newExp)) {
+        stopFidget();
+        resetIdleTimer();
+        if (fidgetReturnRef.current) clearTimeout(fidgetReturnRef.current);
+        const duration = newExp === 'spin-360' ? 2600 : newExp === 'angry' ? 3500 : 3200;
+        fidgetReturnRef.current = setTimeout(() => {
+          setExpressionState((cur) => (cur === newExp ? 'idle' : cur));
+          scheduleNextFidget();
+        }, duration);
       } else {
         // Đang thinking/speaking/emotion → dừng fidget, giữ sleep timer
         stopFidget();

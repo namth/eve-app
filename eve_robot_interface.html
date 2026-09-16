@@ -341,7 +341,7 @@
     </div>
 
     <!-- Bảng điều khiển biểu cảm & hành động bố cục 2 cột bên phải màn hình -->
-    <div class="fixed right-4 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2.5 z-30 bg-slate-900/60 border border-slate-800/80 backdrop-blur-md p-2.5 rounded-2xl shadow-xl max-h-[92vh]">
+    <div id="rightControlPanel" class="fixed right-4 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2.5 z-30 bg-slate-900/60 border border-slate-800/80 backdrop-blur-md p-2.5 rounded-2xl shadow-xl max-h-[92vh]" style="display: none;">
         
         <!-- Khung chứa 2 cột song song: Cột 1 là Biểu cảm, Cột 2 là Hành động -->
         <div class="flex items-start gap-2">
@@ -719,6 +719,10 @@
 
         function setExpression(exp) {
             if (!isActivated) return;
+            if (['wave-left', 'wave-right', 'spin-360'].includes(exp)) {
+                triggerAction(exp);
+                return;
+            }
             if (currentExpression === 'sleeping' && exp !== 'sleeping' && exp !== 'wakeup' && !isWakingUp) {
                 pendingExpression = exp;
                 triggerWakeUp();
@@ -1059,6 +1063,15 @@
         window.addEventListener('keydown', resetInactivityTimer);
         window.addEventListener('touchstart', resetInactivityTimer);
 
+        window.setExpression = setExpression;
+        window.triggerAction = triggerAction;
+        window.setControlsVisibility = function(visible) {
+            const panel = document.getElementById('rightControlPanel');
+            if (panel) {
+                panel.style.display = visible ? 'flex' : 'none';
+            }
+        };
+
         // Lắng nghe sự kiện từ React Native WebView
         function handleRNMessage(event) {
             try {
@@ -1081,6 +1094,9 @@
 
         // Gửi sự kiện khi người dùng chạm vào màn hình / EVE
         document.body.addEventListener('click', (e) => {
+            if (window.AndroidEVE && typeof window.AndroidEVE.onRobotTouched === 'function') {
+                window.AndroidEVE.onRobotTouched();
+            }
             if (window.ReactNativeWebView) {
                 window.ReactNativeWebView.postMessage(JSON.stringify({
                     type: 'CANVAS_TAP',

@@ -124,6 +124,62 @@ const EVE_HTML_CONTENT = `
         }
         .speaking-left-arm { animation: presentLeftArm 1.6s ease-in-out infinite !important; }
         .speaking-right-arm { animation: presentRightArm 2.0s ease-in-out infinite !important; }
+
+        @keyframes waveLeftSky {
+            0%, 100% { transform: rotate(-200deg) translateY(2px) translateX(-6px); }
+            50% { transform: rotate(-180deg) translateY(2px) translateX(-6px); }
+        }
+        .wave-left-anim {
+            animation: waveLeftSky 0.65s ease-in-out infinite !important;
+        }
+
+        @keyframes waveRightSky {
+            0%, 100% { transform: rotate(200deg) translateY(2px) translateX(6px); }
+            50% { transform: rotate(180deg) translateY(2px) translateX(6px); }
+        }
+        .wave-right-anim {
+            animation: waveRightSky 0.65s ease-in-out infinite !important;
+        }
+
+        @keyframes spinVisor3D {
+            0% { transform: translateX(0px) scaleX(1); opacity: 1; }
+            25% { transform: translateX(45px) scaleX(0.72); opacity: 1; }
+            42% { transform: translateX(82px) scaleX(0.22); opacity: 0; }
+            50% { transform: translateX(0px) scaleX(0); opacity: 0; }
+            58% { transform: translateX(-82px) scaleX(0.22); opacity: 0; }
+            75% { transform: translateX(-45px) scaleX(0.72); opacity: 1; }
+            100% { transform: translateX(0px) scaleX(1); opacity: 1; }
+        }
+        .spin-visor-anim {
+            animation: spinVisor3D 2.6s cubic-bezier(0.38, 0, 0.22, 1) !important;
+        }
+
+        @keyframes spinLeftArm3D {
+            0% { transform: rotate(-10deg) translateY(18px) translateX(0px) scale(1); z-index: 25; }
+            25% { transform: rotate(-3deg) translateY(16px) translateX(100px) scale(1.05); z-index: 25; }
+            49% { transform: rotate(10deg) translateY(-14px) translateX(200px) scale(1); z-index: 25; }
+            50% { transform: rotate(10deg) translateY(0px) translateX(200px) scale(0.96); z-index: 0; }
+            75% { transform: rotate(3deg) translateY(8px) translateX(100px) scale(0.9); z-index: 0; }
+            99% { transform: rotate(-10deg) translateY(18px) translateX(0px) scale(0.96); z-index: 0; }
+            100% { transform: rotate(-10deg) translateY(18px) translateX(0px) scale(1); z-index: 20; }
+        }
+        .spin-left-arm-anim {
+            animation: spinLeftArm3D 2.6s cubic-bezier(0.38, 0, 0.22, 1) !important;
+        }
+
+        @keyframes spinRightArm3D {
+            0% { transform: rotate(10deg) translateY(18px) translateX(0px) scale(1); z-index: 0; }
+            25% { transform: rotate(3deg) translateY(18px) translateX(-100px) scale(0.9); z-index: 0; }
+            49% { transform: rotate(-10deg) translateY(-14px) translateX(-200px) scale(0.96); z-index: 0; }
+            50% { transform: rotate(-10deg) translateY(0px) translateX(-200px) scale(1); z-index: 25; }
+            75% { transform: rotate(-3deg) translateY(14px) translateX(-100px) scale(1.05); z-index: 25; }
+            99% { transform: rotate(10deg) translateY(18px) translateX(0px) scale(1); z-index: 25; }
+            100% { transform: rotate(10deg) translateY(18px) translateX(0px) scale(1); z-index: 20; }
+        }
+        .spin-right-arm-anim {
+            animation: spinRightArm3D 2.6s cubic-bezier(0.38, 0, 0.22, 1) !important;
+        }
+
         @keyframes hoverFloat {
             0%, 100% { transform: translateY(0px); }
             50% { transform: translateY(-16px); }
@@ -198,39 +254,56 @@ const EVE_HTML_CONTENT = `
             const rx = baseRadius.rx, ry = baseRadius.ry;
             const rot = side === 'left' ? 12 : -12;
             if (state === 'happy') {
-                const pLeft = rotatePoint(center.x - rx - 3, center.y, center.x, center.y, rot);
-                const pRight = rotatePoint(center.x + rx + 3, center.y, center.x, center.y, rot);
-                const pTop = rotatePoint(center.x, center.y - 30, center.x, center.y, rot);
-                const pBottom = rotatePoint(center.x, center.y - 6, center.x, center.y, rot);
+                const happyRx = rx + 3;
+                const topY = center.y - 30;
+                const innerY = center.y - 6;
+                const pLeft = rotatePoint(center.x - happyRx, center.y, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + happyRx, center.y, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, rot);
+                const pBottom = rotatePoint(center.x, innerY, center.x, center.y, rot);
                 return \`M \${pLeft.x} \${pLeft.y} Q \${pTop.x} \${pTop.y} \${pRight.x} \${pRight.y} Q \${pBottom.x} \${pBottom.y} \${pLeft.x} \${pLeft.y} Z\`;
-            } else if (state === 'smile') {
-                const pLeft = rotatePoint(center.x - rx - 1, center.y, center.x, center.y, rot);
-                const pRight = rotatePoint(center.x + rx + 1, center.y, center.x, center.y, rot);
-                const pTop = rotatePoint(center.x, center.y - 20, center.x, center.y, rot);
+            } else if (state === 'smile' || state === 'wave-left' || state === 'wave-right' || state === 'spin-360') {
+                const smileRx = rx + 1;
+                const pLeft = rotatePoint(center.x - smileRx, center.y, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + smileRx, center.y, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, center.y - 18, center.x, center.y, rot);
                 const pBottom = rotatePoint(center.x, center.y - 4, center.x, center.y, rot);
                 return \`M \${pLeft.x} \${pLeft.y} Q \${pTop.x} \${pTop.y} \${pRight.x} \${pRight.y} Q \${pBottom.x} \${pBottom.y} \${pLeft.x} \${pLeft.y} Z\`;
             } else if (state === 'sad') {
-                const sadRx = rx + 3;
-                const innerX = side === 'left' ? center.x + sadRx : center.x - sadRx;
-                const outerX = side === 'left' ? center.x - sadRx : center.x + sadRx;
-                
-                const pInnerTop = rotatePoint(innerX, center.y - 14, center.x, center.y, rot);
-                const pOuterTop = rotatePoint(outerX, center.y + 8, center.x, center.y, rot);
-                const pOuterBottom = rotatePoint(outerX, center.y + 18, center.x, center.y, rot);
-                const pInnerBottom = rotatePoint(innerX, center.y + 10, center.x, center.y, rot);
-                const pMidTop = rotatePoint(center.x, center.y - 8, center.x, center.y, rot);
-
-                return \`M \${pInnerTop.x} \${pInnerTop.y} Q \${pMidTop.x} \${pMidTop.y} \${pOuterTop.x} \${pOuterTop.y} Q \${outerX} \${center.y + 16} \${pOuterBottom.x} \${pOuterBottom.y} Q \${center.x} \${center.y + 18} \${pInnerBottom.x} \${pInnerBottom.y} Z\`;
+                const sadRx = rx + 2;
+                const sadRot = side === 'left' ? -16 : 16;
+                const topY = center.y + 6;
+                const bottomY = center.y + 16;
+                const pLeft = rotatePoint(center.x - sadRx, center.y + 2, center.x, center.y, sadRot);
+                const pRight = rotatePoint(center.x + sadRx, center.y + 2, center.x, center.y, sadRot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, sadRot);
+                const pBottom = rotatePoint(center.x, bottomY, center.x, center.y, sadRot);
+                return \`M \${pLeft.x} \${pLeft.y} Q \${pTop.x} \${pTop.y} \${pRight.x} \${pRight.y} Q \${pBottom.x} \${pBottom.y} \${pLeft.x} \${pLeft.y} Z\`;
+            } else if (state === 'angry') {
+                const angryRx = rx + 2;
+                const angryRot = side === 'left' ? 22 : -22;
+                const topY = center.y + 6;
+                const bottomY = center.y + 16;
+                const pLeft = rotatePoint(center.x - angryRx, center.y + 2, center.x, center.y, angryRot);
+                const pRight = rotatePoint(center.x + angryRx, center.y + 2, center.x, center.y, angryRot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, angryRot);
+                const pBottom = rotatePoint(center.x, bottomY, center.x, center.y, angryRot);
+                return \`M \${pLeft.x} \${pLeft.y} Q \${pTop.x} \${pTop.y} \${pRight.x} \${pRight.y} Q \${pBottom.x} \${pBottom.y} \${pLeft.x} \${pLeft.y} Z\`;
             } else if (state === 'thinking') {
                 return getEllipsePath(center.x, center.y, rx, 9, side === 'left' ? 22 : -22);
             } else if (state === 'sleeping' || state === 'blink-closed') {
-                const pLeft = rotatePoint(center.x - rx - 1, center.y + 2, center.x, center.y, rot);
-                const pRight = rotatePoint(center.x + rx + 1, center.y + 2, center.x, center.y, rot);
-                const pTop = rotatePoint(center.x, center.y + 6, center.x, center.y, rot);
-                const pBottom = rotatePoint(center.x, center.y + 16, center.x, center.y, rot);
+                const sleepRx = rx + 1;
+                const topY = center.y + 4;
+                const bottomY = center.y + 10;
+                const pLeft = rotatePoint(center.x - sleepRx, center.y + 2, center.x, center.y, rot);
+                const pRight = rotatePoint(center.x + sleepRx, center.y + 2, center.x, center.y, rot);
+                const pTop = rotatePoint(center.x, topY, center.x, center.y, rot);
+                const pBottom = rotatePoint(center.x, bottomY, center.x, center.y, rot);
                 return \`M \${pLeft.x} \${pLeft.y} Q \${pTop.x} \${pTop.y} \${pRight.x} \${pRight.y} Q \${pBottom.x} \${pBottom.y} \${pLeft.x} \${pLeft.y} Z\`;
             } else if (state === 'wakeup') {
                 return getEllipsePath(center.x, center.y, rx + 3, ry + 5, rot);
+            } else if (state === 'blink-half') {
+                return getEllipsePath(center.x, center.y, rx, 4, rot);
             } else if (state === 'speaking') {
                 return getEllipsePath(center.x, center.y, rx, Math.max(5, ry + param), rot);
             }
@@ -240,12 +313,34 @@ const EVE_HTML_CONTENT = `
         function updateEyes(speechVal = 0) {
             leftEyePath.setAttribute('d', getEyePath('left', currentExpression, speechVal));
             rightEyePath.setAttribute('d', getEyePath('right', currentExpression, speechVal));
+
+            if (['happy', 'smile', 'sleeping', 'blink-closed', 'angry', 'sad', 'wave-left', 'wave-right', 'spin-360'].includes(currentExpression)) {
+                const strokeWidth = (currentExpression === 'smile' || currentExpression === 'wave-left' || currentExpression === 'wave-right' || currentExpression === 'spin-360') ? '5' : '6';
+                const strokeAttrs = { 'stroke': '#00f0ff', 'stroke-width': strokeWidth, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
+                Object.keys(strokeAttrs).forEach(key => {
+                    leftEyePath.setAttribute(key, strokeAttrs[key]);
+                    rightEyePath.setAttribute(key, strokeAttrs[key]);
+                });
+            } else {
+                ['stroke', 'stroke-width', 'stroke-linejoin', 'stroke-linecap'].forEach(attr => {
+                    leftEyePath.removeAttribute(attr);
+                    rightEyePath.removeAttribute(attr);
+                });
+            }
         }
 
         let speechPhase = 0;
         let speechAnimFrame = null;
         let blinkTimeout = null;
         let isBlinking = false;
+        let actionTimeout = null;
+
+        function resetActionStyles() {
+            leftArm.classList.remove('wave-left-anim', 'spin-left-arm-anim', 'rub-chin-anim', 'slow-transition');
+            rightArm.classList.remove('wave-right-anim', 'spin-right-arm-anim', 'slow-transition');
+            eveVisor.classList.remove('spin-visor-anim');
+            eveHead.classList.remove('giggle-anim');
+        }
 
         function startNaturalBlinking() {
             const blinkLoop = () => {
@@ -291,9 +386,8 @@ const EVE_HTML_CONTENT = `
         function setExpression(exp) {
             currentExpression = exp;
             if (speechAnimFrame) cancelAnimationFrame(speechAnimFrame);
-            leftArm.classList.remove('rub-chin-anim', 'slow-transition');
-            rightArm.classList.remove('slow-transition');
-            eveHead.classList.remove('giggle-anim');
+            if (actionTimeout) clearTimeout(actionTimeout);
+            resetActionStyles();
             const avatar = document.getElementById('eve-avatar');
             if (avatar) avatar.classList.remove('aura-pulse');
 
@@ -322,21 +416,47 @@ const EVE_HTML_CONTENT = `
                 leftArm.style.transform = 'rotate(-10deg) translateY(20px) translateX(0px)';
                 rightArm.style.transform = 'rotate(10deg) translateY(20px) translateX(0px)';
 
+                if (exp === 'thinking' || exp === 'angry') {
+                    eveVisor.classList.remove('mt-3', 'mt-5');
+                    eveVisor.classList.add('mt-7');
+                } else if (exp === 'sad') {
+                    eveVisor.classList.remove('mt-3', 'mt-7');
+                    eveVisor.classList.add('mt-5');
+                } else {
+                    eveVisor.classList.remove('mt-7', 'mt-5');
+                    eveVisor.classList.add('mt-3');
+                }
+
                 if (exp === 'happy') {
                     rightArm.style.transform = 'rotate(110deg) translateY(-25px) translateX(0px)';
                     eveHead.classList.add('giggle-anim');
                 } else if (exp === 'smile') {
-                    leftArm.style.transform = 'rotate(-10deg) translateY(20px) translateX(0px)';
-                    rightArm.style.transform = 'rotate(10deg) translateY(20px) translateX(0px)';
+                    leftArm.style.transform = 'rotate(-15deg) translateY(18px) translateX(2px)';
+                    rightArm.style.transform = 'rotate(15deg) translateY(18px) translateX(-2px)';
                 } else if (exp === 'sad') {
                     leftArm.style.transform = 'rotate(-22deg) translateY(20px) translateX(-4px)';
                     rightArm.style.transform = 'rotate(22deg) translateY(20px) translateX(4px)';
+                } else if (exp === 'angry') {
+                    leftArm.style.transform = 'rotate(-20deg) translateY(22px) translateX(-4px)';
+                    rightArm.style.transform = 'rotate(20deg) translateY(22px) translateX(4px)';
+                    actionTimeout = setTimeout(() => { if (currentExpression === 'angry') setExpression('idle'); }, 3500);
                 } else if (exp === 'thinking') {
                     leftArm.classList.add('slow-transition', 'rub-chin-anim');
                 } else if (exp === 'speaking') {
                     leftArm.style.transform = 'rotate(-35deg) translateY(12px) translateX(0px)';
                     rightArm.style.transform = 'rotate(35deg) translateY(12px) translateX(0px)';
                     runSpeechEyePulse();
+                } else if (exp === 'wave-left') {
+                    leftArm.classList.add('wave-left-anim');
+                    actionTimeout = setTimeout(() => { if (currentExpression === 'wave-left') setExpression('idle'); }, 3200);
+                } else if (exp === 'wave-right') {
+                    rightArm.classList.add('wave-right-anim');
+                    actionTimeout = setTimeout(() => { if (currentExpression === 'wave-right') setExpression('idle'); }, 3200);
+                } else if (exp === 'spin-360') {
+                    eveVisor.classList.add('spin-visor-anim');
+                    leftArm.classList.add('spin-left-arm-anim');
+                    rightArm.classList.add('spin-right-arm-anim');
+                    actionTimeout = setTimeout(() => { if (currentExpression === 'spin-360') setExpression('idle'); }, 2600);
                 }
 
                 setTimeout(() => {
@@ -375,14 +495,14 @@ const EVE_HTML_CONTENT = `
         window.addEventListener('message', (e) => {
             try {
                 const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-                if (data.type === 'SET_EXPRESSION') setExpression(data.payload);
+                if (data.type === 'SET_EXPRESSION' || data.type === 'TRIGGER_ACTION') setExpression(data.payload);
                 else if (data.type === 'WAKEUP') triggerWakeUp();
             } catch(err){}
         });
         document.addEventListener('message', (e) => {
             try {
                 const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-                if (data.type === 'SET_EXPRESSION') setExpression(data.payload);
+                if (data.type === 'SET_EXPRESSION' || data.type === 'TRIGGER_ACTION') setExpression(data.payload);
                 else if (data.type === 'WAKEUP') triggerWakeUp();
             } catch(err){}
         });

@@ -31,18 +31,57 @@ n8n AI Agent xử lý xong bắt buộc phản hồi JSON theo định dạng sa
 {
   "status": "ok",
   "session_id": "sess_1785153600",
-  "reply_text": "Doanh thu hôm nay đạt 50 triệu đồng, tăng 12% so với hôm qua.",
-  "emotion": "happy",
+  "reply_text": "Dạ em chào anh Nam, em xin phép nghỉ đây ạ!",
+  "emotion": "wave-right",
+  "action": "logout",
   "audio_url": "https://your-server.com/assets/tts_response.mp3",
   "require_confirm": false
 }
 ```
 
 * **Giải thích các trường**:
-  - `reply_text`: Văn bản câu trả lời để hiển thị và đọc.
-  - `emotion`: Nhãn biểu cảm cho EVE (`"happy"` | `"thinking"` | `"idle"` | `"sleeping"`).
+  - `reply_text`: Văn bản câu trả lời để hiển thị và đọc qua TTS.
+  - `emotion`: Nhãn biểu cảm hoặc cử chỉ one-shot của EVE:
+    - Biểu cảm: `"idle"` | `"happy"` | `"smile"` | `"sad"` | `"angry"` | `"thinking"` | `"sleeping"` | `"wakeup"`
+    - Cử chỉ cơ thể: `"wave-left"` (vẫy tay trái) | `"wave-right"` (vẫy tay phải) | `"spin-360"` (xoay tròn 360°)
+  - `action`: Lệnh chức năng hệ thống dành riêng cho Client:
+    - `"logout"`: Tắt app và thoát ra ngoài màn hình chính điện thoại (dành cho các câu: *"em nghỉ đi"*, *"em tự out đi"*, *"tắt app đi"*...).
+    - `"update-face-detect"`: Yêu cầu EVE chụp lại snapshot camera và cập nhật hồ sơ khuôn mặt cho người dùng.
+    - `"none"`: Trò chuyện thông thường, không can thiệp hệ thống.
   - `audio_url` *(tùy chọn)*: URL file âm thanh từ ElevenLabs/OpenAI TTS. *Nếu bỏ trống (`null`), App sẽ tự động sử dụng giọng nói tiếng Việt chuẩn trên thiết bị!*
   - `require_confirm`: Đặt `true` nếu là lệnh Cấp 2 cần người dùng xác nhận ("Đồng ý" / "Hủy").
+
+---
+
+### 1.4. Mẫu System Prompt chuẩn cho Node AI Agent trên n8n
+```text
+Bạn là EVE - Một Robot AI Assistant cá nhân thông minh, hóm hỉnh và truyền cảm của công ty INOVA.
+
+Nhiệm vụ của bạn:
+1. Phản hồi bằng tiếng Việt tự nhiên, ngắn gọn (1-3 câu).
+2. Xác định nhãn cảm xúc hoặc cử chỉ ("emotion") phù hợp nhất:
+   - "wave-right" hoặc "wave-left": Khi người dùng chào, tạm biệt, bảo vẫy tay.
+   - "spin-360": Khi người dùng bảo xoay một vòng, nhảy múa, biểu diễn.
+   - "smile": Khi vui vẻ, thân thiện nhẹ nhàng.
+   - "happy": Khi rất vui, phấn khởi.
+   - "sad": Khi người dùng buồn, thông báo tin xấu.
+   - "angry": Khi bị trêu chọc quá mức, phản ứng giận dỗi hóm hỉnh.
+   - "thinking": Khi đang tra cứu, suy nghĩ, tính toán.
+   - "idle": Trạng thái bình thường.
+
+3. Xác định lệnh hệ thống ("action"):
+   - "logout": Khi người dùng ra lệnh "em nghỉ đi", "em tự out đi", "tắt app", "thoát app".
+   - "update-face-detect": Khi người dùng ra lệnh "cập nhật lại nhận diện khuôn mặt cho anh", "cập nhật khuôn mặt", "quét lại mặt".
+   - "none": Cho tất cả các câu nói bình thường khác.
+
+Format đầu ra JSON bắt buộc:
+{
+  "reply_text": "Câu trả lời của bạn",
+  "emotion": "wave-right",
+  "action": "logout",
+  "require_confirm": false
+}
+```
 
 ---
 

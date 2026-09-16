@@ -1,6 +1,20 @@
 import { PersonProfile } from './personProfile';
 
-export type EVEExpression = 'idle' | 'happy' | 'smile' | 'sad' | 'thinking' | 'speaking' | 'sleeping' | 'wakeup';
+export type EVEExpression =
+  | 'idle'
+  | 'happy'
+  | 'smile'
+  | 'sad'
+  | 'angry'
+  | 'thinking'
+  | 'speaking'
+  | 'sleeping'
+  | 'wakeup'
+  | 'wave-left'
+  | 'wave-right'
+  | 'spin-360';
+
+export type EVESystemAction = 'update-face-detect' | 'logout' | 'none';
 
 export interface ChatWebhookRequest {
   user_id: string;
@@ -24,9 +38,11 @@ export interface ChatWebhookResponse {
   session_id: string;
   reply_text: string;
   emotion: EVEExpression;
+  action?: EVESystemAction | string;
   audio_url?: string;
   require_confirm?: boolean;
   pending_action?: string;
+  action_executed?: string;
   suggested_answers?: string[];
   person?: {
     name?: string;
@@ -64,9 +80,10 @@ export interface PushNotificationPayload {
   title?: string;
   audio_url?: string;
   emotion?: EVEExpression;
+  system_action?: EVESystemAction;
 }
 
 export interface WebViewBridgeMessage {
-  type: 'SET_EXPRESSION' | 'SPEAK_SIMULATION' | 'UPDATE_VOLUME' | 'WAKEUP';
+  type: 'SET_EXPRESSION' | 'TRIGGER_ACTION' | 'SPEAK_SIMULATION' | 'UPDATE_VOLUME' | 'WAKEUP';
   payload?: any;
 }

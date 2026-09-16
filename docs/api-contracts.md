@@ -52,11 +52,12 @@ Endpoint chính để Mobile App gửi văn bản người dùng nói (STT) lên
 {
   "status": "ok",
   "session_id": "sess_987654",
-  "reply_text": "Doanh thu tuần này đạt 120 triệu đồng, tăng 15% so với tuần trước.",
-  "emotion": "happy", // Các giá trị: "idle" | "happy" | "thinking" | "speaking" | "sleeping"
+  "reply_text": "Dạ em chào anh Nam, em xin phép nghỉ đây ạ!",
+  "emotion": "wave-right", // Các giá trị: "idle" | "happy" | "smile" | "sad" | "angry" | "thinking" | "speaking" | "sleeping" | "wakeup" | "wave-left" | "wave-right" | "spin-360"
+  "action": "logout", // Lệnh hệ thống: "logout" (thoát app về home screen) | "update-face-detect" (cập nhật nhận diện khuôn mặt) | "none"
   "audio_url": "https://n8n-server.com/assets/tts_response_101.mp3",
   "require_confirm": false,
-  "action_executed": "query_revenue"
+  "action_executed": "logout"
 }
 ```
 

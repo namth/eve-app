@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Switch,
+  BackHandler,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -444,6 +445,70 @@ export default function App() {
   }, [handleIncomingSpeech, processNotificationQueue, startVADListening, setExpression]);
 
   /**
+   * Xử lý Lệnh Hệ Thống: Cập nhật lại nhận diện khuôn mặt (update-face-detect)
+   */
+  const handleUpdateFaceDetect = async () => {
+    console.log('[App] Action: update-face-detect triggered. Capturing camera snapshot...');
+    setExpression('thinking');
+    try {
+      const snapshot = await faceRecognitionService.captureSnapshotBase64();
+      if (snapshot && currentPersonRef.current) {
+        const updatedPerson: PersonProfile = {
+          ...currentPersonRef.current,
+          avatar_base64: snapshot,
+          last_seen_at: Date.now(),
+        };
+        await peopleDatabaseService.savePersonProfile(updatedPerson);
+        if (persistLastUserRef.current) {
+          await peopleDatabaseService.saveCurrentUser(updatedPerson);
+        }
+        setCurrentPerson(updatedPerson);
+        console.log('[App] Face detection snapshot updated for:', updatedPerson.name);
+
+        const confirmMsg = 'Dạ em đã cập nhật nhận diện khuôn mặt thành công cho anh rồi ạ!';
+        setLastReplyText(confirmMsg);
+        setExpression('smile');
+        await audioService.playTTS(confirmMsg, undefined, () => {
+          setExpression('idle');
+          if (isHandsFreeModeRef.current) {
+            startVADListening();
+          }
+        });
+      } else {
+        console.warn('[App] Could not capture snapshot or no active user profile.');
+        const retryMsg = 'Em chưa chụp được ảnh khuôn mặt, anh vui lòng hướng camera về phía khuôn mặt rồi thử lại nhé!';
+        setLastReplyText(retryMsg);
+        setExpression('sad');
+        await audioService.playTTS(retryMsg, undefined, () => {
+          setExpression('idle');
+          if (isHandsFreeModeRef.current) {
+            startVADListening();
+          }
+        });
+      }
+    } catch (err) {
+      console.error('[App] Error during update-face-detect:', err);
+      setExpression('sad');
+    }
+  };
+
+  /**
+   * Xử lý Lệnh Hệ Thống: Tự động tắt app & thoát ra ngoài màn hình chính (logout)
+   */
+  const handleAppLogout = (delayMs: number = 1600) => {
+    console.log('[App] Action: logout triggered. Exiting app in', delayMs, 'ms...');
+    setTimeout(() => {
+      if (Platform.OS === 'android') {
+        console.log('[App] BackHandler.exitApp() executed.');
+        BackHandler.exitApp();
+      } else {
+        console.log('[App] Non-Android environment, putting EVE into sleeping state.');
+        setExpression('sleeping');
+      }
+    }, delayMs);
+  };
+
+  /**
    * Gửi câu lệnh bằng văn bản lên n8n Webhook
    */
   const handleSendMessage = async (customMessage?: string) => {
@@ -514,11 +579,41 @@ export default function App() {
         }
       }
 
-      const targetEmotion = response.emotion || 'happy';
-      setExpression('speaking');
+      // Nhận diện intent cử chỉ / hành động
+      let detectedAction = response.action || (response as any).action_executed;
+      const lowerMsg = msgToSend.toLowerCase();
 
-      await audioService.playTTS(response.reply_text, response.audio_url, () => {
+      if (!detectedAction) {
+        if (/(thôi được rồi|em nghỉ đi|em tự out|tắt app|thoát app|nghỉ đi)/i.test(lowerMsg)) {
+          detectedAction = 'logout';
+        } else if (/(cập nhật lại nhận diện khuôn mặt|cập nhật khuôn mặt|quét lại mặt|chụp lại mặt)/i.test(lowerMsg)) {
+          detectedAction = 'update-face-detect';
+        }
+      }
+
+      const targetEmotion = response.emotion || (detectedAction === 'logout' ? 'wave-right' : 'happy');
+      const isGesture = ['wave-left', 'wave-right', 'spin-360'].includes(targetEmotion);
+
+      if (isGesture) {
         setExpression(targetEmotion);
+      } else {
+        setExpression('speaking');
+      }
+
+      await audioService.playTTS(response.reply_text, response.audio_url, async () => {
+        if (!isGesture) {
+          setExpression(targetEmotion);
+        }
+
+        const normalizedAction = (detectedAction || '').toLowerCase();
+        if (normalizedAction === 'logout') {
+          handleAppLogout(800);
+          return;
+        } else if (normalizedAction === 'update-face-detect' || normalizedAction === 'update_face_detect') {
+          await handleUpdateFaceDetect();
+          return;
+        }
+
         setTimeout(() => {
           setExpression('idle');
           if (isHandsFreeModeRef.current) {
