@@ -681,6 +681,9 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
             val now = System.currentTimeMillis()
             val isSameRecent = (lastGreetedPersonId == person.id && (now - lastGreetedTimestamp < GREETED_COOLDOWN_MS))
             if (!isSameRecent && !voiceManager.isTtsSpeaking && !voiceManager.isListening && !isWaitingForAiResponse) {
+                if (lastGreetedPersonId != person.id) {
+                    LocalAiAgentService.clearSessionMemory()
+                }
                 lastGreetedPersonId = person.id
                 lastGreetedTimestamp = now
 
@@ -742,6 +745,7 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
     }
 
     override fun onPersonDeparted(person: PersonProfile) {
+        LocalAiAgentService.clearSessionMemory()
         runOnUiThread {
             val pronoun = person.preferredPronoun
             val farewell = "Tạm biệt $pronoun ${person.name}, hẹn gặp lại!"
@@ -1095,26 +1099,150 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
         }
 
         isWaitingForAiResponse = true
-        try {
-            // Gửi transcript tới n8n Webhook (kèm multi-turn currentSessionId)
-            val response = N8nService.sendMessage(transcript, visionTracker.activePerson, currentSessionId)
+        runOnUiThread {
+            eveWebView.setEmotion("thinking")
+            binding.tvVoiceStatus.text = "EVE đang suy nghĩ..."
+        }
 
+        val activePerson = visionTracker.activePerson
+        val visualGender = if (!sessionPredictedGender.isNullOrBlank()) sessionPredictedGender else null
+
+        val chatResult = LocalAiAgentService.processChatTurn(
+            message = transcript,
+            currentPerson = activePerson,
+            visualGender = visualGender,
+            dbHelper = dbHelper
+        )
+
+        // 1. Nếu mất mạng hoàn toàn: Thông báo mạng trực tiếp
+        if (chatResult.isNetworkError) {
+            isWaitingForAiResponse = false
+            runOnUiThread {
+                speakAndShowBanner(chatResult.replyText, "sad")
+            }
+            return
+        }
+
+        // 2. Action = "perplexity" (Tin tức thời sự nóng - Xử lý trực tiếp tại Local)
+        if (chatResult.action == "perplexity" || !chatResult.perplexityQuery.isNullOrBlank()) {
+            val query = chatResult.perplexityQuery ?: transcript
+            val filler = chatResult.voiceFiller ?: chatResult.replyText.ifBlank { "Dạ để em tra cứu tin tức mới nhất ngay ạ!" }
+            
+            runOnUiThread {
+                speakAndShowBanner(filler, "thinking")
+            }
+
+            // Gọi Perplexity API trực tiếp ngay trên máy khách
+            val newsResult = LocalAiAgentService.callPerplexityApi(query, dbHelper)
             runOnUiThread {
                 isWaitingForAiResponse = false
-                handleAiResponse(response, transcript)
+                if (!newsResult.isNullOrBlank()) {
+                    speakAndShowBanner(newsResult, "curious")
+                } else {
+                    speakAndShowBanner("Dạ em chưa tìm thấy tin tức mới nhất về chủ đề này rồi ạ.", "shrug")
+                }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error contacting n8n: ${e.message}, using Local AI Agent fallback", e)
-            val localAction = LocalAiAgentService.parseSystemAction(
-                utterance = transcript,
-                currentPersonName = visionTracker.activePerson?.name,
-                currentPronoun = visionTracker.activePerson?.preferredPronoun,
-                dbHelper = dbHelper
-            )
+            return
+        }
+
+        // 3. Action = "forward_to_server" (Tra cứu kỹ thuật INOVA: domain, hosting, hóa đơn, tài khoản, khách hàng)
+        if (chatResult.delegateToServer || chatResult.action == "forward_to_server") {
+            val filler = chatResult.voiceFiller ?: chatResult.replyText.ifBlank { "Dạ để em kiểm tra trên hệ thống xíu ạ!" }
+            
+            // Phát câu đệm giọng nói trước trong lúc gọi n8n
             runOnUiThread {
-                isWaitingForAiResponse = false
-                speakAndShowBanner(localAction.replyText, localAction.emotion)
+                speakAndShowBanner(filler, "thinking")
             }
+
+            try {
+                val response = N8nService.sendMessage(transcript, activePerson, currentSessionId)
+                runOnUiThread {
+                    isWaitingForAiResponse = false
+                    handleAiResponse(response, transcript)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error contacting n8n for forward_to_server: ${e.message}", e)
+                runOnUiThread {
+                    isWaitingForAiResponse = false
+                    speakAndShowBanner("Dạ hệ thống tra cứu server đang bận, sếp thử lại sau nhé!", "shrug")
+                }
+            }
+            return
+        }
+
+        // 4. Xử lý tác vụ hoàn toàn tại Local
+        // 4.1. Đăng ký người mới (new_person)
+        chatResult.newPerson?.let { newP ->
+            if (newP.name.isNotBlank()) {
+                val captureResult = visionTracker.captureCurrentFaceForPerson(
+                    name = newP.name,
+                    preferredPronoun = newP.preferredPronoun,
+                    gender = newP.gender,
+                    role = newP.role
+                )
+                val p = captureResult.person ?: dbHelper.findPersonByName(newP.name)
+                if (p != null) {
+                    visionTracker.setActivePersonManually(p, hasFaceConfirmed = true)
+                    runOnUiThread {
+                        binding.tvActivePerson.text = "👤 ${p.preferredPronoun} ${p.name}"
+                        binding.tvTierBadge.text = "Thị giác: Tier 2 (Bám khung tiết kiệm)"
+                    }
+                }
+            }
+        }
+
+        // 4.2. Sửa thông tin người dùng (update_person)
+        chatResult.updatePerson?.let { up ->
+            activePerson?.let { cur ->
+                val updated = cur.copy(
+                    name = if (up.name.isNotBlank()) up.name else cur.name,
+                    preferredPronoun = if (up.preferredPronoun.isNotBlank()) up.preferredPronoun else cur.preferredPronoun,
+                    age = up.age ?: cur.age
+                )
+                dbHelper.upsertPerson(updated)
+                visionTracker.refreshCache()
+                visionTracker.setActivePersonManually(updated, hasFaceConfirmed = true)
+                runOnUiThread {
+                    binding.tvActivePerson.text = "👤 ${updated.preferredPronoun} ${updated.name}"
+                }
+            }
+        }
+
+        // 4.3. Dạy phát âm (pronunciation)
+        chatResult.pronunciation?.let { pair: Pair<String, String> ->
+            dbHelper.savePronunciation(pair.first, pair.second)
+        }
+
+        // 4.4. Lệnh hệ thống (action: logout, update-face-detect)
+        when (chatResult.action) {
+            "logout" -> {
+                runOnUiThread {
+                    isWaitingForAiResponse = false
+                    speakAndShowBanner(chatResult.replyText, chatResult.emotion) {
+                        finish()
+                    }
+                }
+                return
+            }
+            "update-face-detect" -> {
+                activePerson?.let { p ->
+                    visionTracker.captureCurrentFaceForPerson(
+                        name = p.name,
+                        preferredPronoun = p.preferredPronoun,
+                        gender = p.gender,
+                        role = p.role
+                    )
+                    runOnUiThread {
+                        binding.tvVoiceStatus.text = "Đã cập nhật lại khuôn mặt cho ${p.preferredPronoun} ${p.name}"
+                    }
+                }
+            }
+        }
+
+        // 4.5. Phát câu trả lời thông thường
+        runOnUiThread {
+            isWaitingForAiResponse = false
+            speakAndShowBanner(chatResult.replyText, chatResult.emotion)
         }
     }
 
