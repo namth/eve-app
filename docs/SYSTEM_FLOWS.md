@@ -46,8 +46,15 @@ flowchart TD
     DETECT --> EXTRACT[MobileFaceNet tạo vector đặc trưng 192 chiều]
     EXTRACT --> MATCH{So khớp Cosine Sim với DB SQLite}
 
-    MATCH -->|Sim < 0.78| UNKNOWN[Khuôn mặt Người Lạ / Chưa đăng ký]
-    MATCH -->|Sim >= 0.78| KNOWN[Nhận diện Người Quen trong danh bạ]
+    MATCH -->|Sim >= 0.80| KNOWN[Nhận diện Chắc Chắn Người Quen]
+    MATCH -->|0.65 <= Sim < 0.80| AMBIGUOUS{"Ngờ Ngợ (Consensus >= 2 góc)"}
+    MATCH -->|Sim < 0.65| UNKNOWN[Khuôn mặt Người Lạ Hoàn Toàn]
+
+    AMBIGUOUS --> ASK_CONFIRM["❓ Hỏi xác nhận: 'Em nhìn anh quen lắm, anh có phải anh [Tên] không ạ?'"]
+    ASK_CONFIRM -->|Người dùng xác nhận ĐÚNG| UPDATE_MA["⚡ Cập nhật Nearest Replacement & Moving Average (70/30) -> Chuyển KNOWN"]
+    UPDATE_MA --> KNOWN
+    ASK_CONFIRM -->|Người dùng phủ nhận SAI| STRANGER_FALLBACK["Chuyển sang luồng Người Lạ & Cooldown 30s"]
+    STRANGER_FALLBACK --> UNKNOWN
 
     UNKNOWN --> CHECK_GENDER[GenderClassifier dự đoán Nam hay Nữ]
     CHECK_GENDER --> GREET_STRANGER["👋 Chào hỏi xã giao lịch sự:

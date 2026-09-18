@@ -24,6 +24,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.os.Build
 import com.example.facedetector.ai.LocalAiAgentService
+import com.example.facedetector.ai.VisualPredictionContext
 import com.example.facedetector.data.NotificationItem
 import com.example.facedetector.notifications.EveFirebaseMessagingService
 import com.google.firebase.messaging.FirebaseMessaging
@@ -819,6 +820,36 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
         }
     }
 
+    override fun onAmbiguousPersonDetected(
+        candidate: PersonProfile,
+        similarity: Float,
+        faceRect: android.graphics.Rect,
+        croppedFace: android.graphics.Bitmap,
+        embedding: FloatArray
+    ) {
+        runOnUiThread {
+            if (visionTracker.activePerson != null || voiceManager.isTtsSpeaking || voiceManager.isListening || isWaitingForAiResponse || pendingAmbiguityConfirmation != null || pendingDisambiguation != null) {
+                return@runOnUiThread
+            }
+
+            pendingAmbiguityConfirmation = PendingAmbiguityConfirmation(
+                candidate = candidate,
+                similarity = similarity,
+                faceRect = faceRect,
+                croppedFace = croppedFace,
+                embedding = embedding
+            )
+
+            voiceManager.isListeningPaused = false
+            voiceManager.isUserPresent = true
+            voiceManager.resetNoSpeechAttempt()
+
+            val question = "Em nhìn ${candidate.preferredPronoun} quen lắm, ${candidate.preferredPronoun} có phải là ${candidate.preferredPronoun} ${candidate.name} không ạ?"
+            binding.tvActivePerson.text = "❓ Nghi vấn: ${candidate.preferredPronoun} ${candidate.name} (${(similarity * 100).toInt()}%)"
+            speakAndShowBanner(question, "curious")
+        }
+    }
+
     override fun onNoFace() {
         runOnUiThread {
             binding.pipOverlay.clear()
@@ -964,6 +995,15 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
     )
     private var pendingConflict: PendingIdentityConflict? = null
 
+    data class PendingAmbiguityConfirmation(
+        val candidate: PersonProfile,
+        val similarity: Float,
+        val faceRect: android.graphics.Rect,
+        val croppedFace: android.graphics.Bitmap,
+        val embedding: FloatArray
+    )
+    private var pendingAmbiguityConfirmation: PendingAmbiguityConfirmation? = null
+
     override fun onSpeechResult(transcript: String) {
         voiceManager.isListeningPaused = false
         voiceManager.isUserPresent = true
@@ -979,6 +1019,55 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
     }
 
     private suspend fun handleSpeechResultAsync(transcript: String) {
+        // 0. Xử lý phản hồi xác nhận nhận diện ngờ ngợ (Ambiguous Confirmation)
+        val amb = pendingAmbiguityConfirmation
+        if (amb != null) {
+            val contextQ = "Em nhìn ${amb.candidate.preferredPronoun} quen lắm, ${amb.candidate.preferredPronoun} có phải là ${amb.candidate.preferredPronoun} ${amb.candidate.name} không ạ?"
+            val intent = LocalAiAgentService.classifyConfirmationIntent(transcript, contextQ, dbHelper)
+            when (intent) {
+                ConfirmationIntent.CONFIRMED -> {
+                    val confirmedPerson = amb.candidate
+                    pendingAmbiguityConfirmation = null
+
+                    // Áp dụng thuật toán Nearest Replacement & Moving Average (70/30)
+                    val updatedEmbeddings = VectorMath.blendEmbeddings(
+                        existingEmbeddings = confirmedPerson.faceEmbeddings,
+                        newEmbedding = amb.embedding,
+                        alpha = 0.30f
+                    )
+                    val updatedPerson = confirmedPerson.copy(
+                        faceEmbeddings = updatedEmbeddings,
+                        lastSeenAt = System.currentTimeMillis()
+                    )
+                    dbHelper.upsertPerson(updatedPerson)
+                    visionTracker.refreshCache()
+                    visionTracker.setActivePersonManually(updatedPerson, hasFaceConfirmed = true)
+
+                    runOnUiThread {
+                        binding.tvTierBadge.text = "Thị giác: Tier 2 (Bám khung tiết kiệm)"
+                        binding.tvActivePerson.text = "👤 ${updatedPerson.preferredPronoun} ${updatedPerson.name}"
+                        speakAndShowBanner("Dạ em chào ${updatedPerson.preferredPronoun} ${updatedPerson.name}! Em đã cập nhật lại góc mặt mới này của ${updatedPerson.preferredPronoun} rồi ạ.", "happy")
+                    }
+                    return
+                }
+                ConfirmationIntent.DENIED -> {
+                    val deniedPerson = amb.candidate
+                    pendingAmbiguityConfirmation = null
+                    visionTracker.setAmbiguousCooldown(deniedPerson.id, durationMs = 30_000L)
+
+                    runOnUiThread {
+                        binding.tvActivePerson.text = "👤 Khách chưa định danh"
+                        binding.tvTierBadge.text = "Thị giác: Tier 1 (Tìm người quen)"
+                        speakAndShowBanner("Dạ em xin lỗi ạ! Do góc nhìn camera nên em nhìn nhầm, cho em xin phép hỏi mình tên gì để em tiện xưng hô ạ?", "shy")
+                    }
+                    return
+                }
+                ConfirmationIntent.AMBIGUOUS -> {
+                    pendingAmbiguityConfirmation = null
+                }
+            }
+        }
+
         // 1. Xử lý phản hồi xác nhận phân biệt người trùng tên (Same-name Disambiguation)
         val disambiguation = pendingDisambiguation
         if (disambiguation != null) {
@@ -1107,11 +1196,21 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
         val activePerson = visionTracker.activePerson
         val visualGender = if (!sessionPredictedGender.isNullOrBlank()) sessionPredictedGender else null
 
+        val visualPrediction = visionTracker.latestVisualPrediction?.let { info ->
+            VisualPredictionContext(
+                candidateName = info.candidateName,
+                candidatePronoun = info.candidatePronoun,
+                similarityPercent = info.similarityPercent,
+                isAmbiguous = info.isAmbiguous
+            )
+        }
+
         val chatResult = LocalAiAgentService.processChatTurn(
             message = transcript,
             currentPerson = activePerson,
             visualGender = visualGender,
-            dbHelper = dbHelper
+            dbHelper = dbHelper,
+            visualPredictionContext = visualPrediction
         )
 
         // 1. Nếu mất mạng hoàn toàn: Thông báo mạng trực tiếp
@@ -1191,19 +1290,21 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
             }
         }
 
-        // 4.2. Sửa thông tin người dùng (update_person)
-        chatResult.updatePerson?.let { up ->
-            activePerson?.let { cur ->
-                val updated = cur.copy(
-                    name = if (up.name.isNotBlank()) up.name else cur.name,
-                    preferredPronoun = if (up.preferredPronoun.isNotBlank()) up.preferredPronoun else cur.preferredPronoun,
-                    age = up.age ?: cur.age
-                )
-                dbHelper.upsertPerson(updated)
-                visionTracker.refreshCache()
-                visionTracker.setActivePersonManually(updated, hasFaceConfirmed = true)
-                runOnUiThread {
-                    binding.tvActivePerson.text = "👤 ${updated.preferredPronoun} ${updated.name}"
+        // 4.2. Sửa thông tin người dùng (update_person) - Chặn tuyệt đối nếu là phản bác danh tính
+        if (chatResult.action != "identity_denied") {
+            chatResult.updatePerson?.let { up ->
+                activePerson?.let { cur ->
+                    val updated = cur.copy(
+                        name = if (up.name.isNotBlank()) up.name else cur.name,
+                        preferredPronoun = if (up.preferredPronoun.isNotBlank()) up.preferredPronoun else cur.preferredPronoun,
+                        age = up.age ?: cur.age
+                    )
+                    dbHelper.upsertPerson(updated)
+                    visionTracker.refreshCache()
+                    visionTracker.setActivePersonManually(updated, hasFaceConfirmed = true)
+                    runOnUiThread {
+                        binding.tvActivePerson.text = "👤 ${updated.preferredPronoun} ${updated.name}"
+                    }
                 }
             }
         }
@@ -1213,29 +1314,94 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
             dbHelper.savePronunciation(pair.first, pair.second)
         }
 
-        // 4.4. Lệnh hệ thống (action: logout, update-face-detect)
-        when (chatResult.action) {
+        // 4.4. Lệnh hệ thống (action: logout, update-face-detect, identity_denied)
+        val lowerMsg = transcript.lowercase().trim()
+        val isAdmin = activePerson?.role.equals("admin", ignoreCase = true)
+        val isLogoutCommand = lowerMsg.contains("nghỉ đi") || lowerMsg.contains("tự out") || lowerMsg.contains("tắt app") ||
+                lowerMsg.contains("thoát app") || lowerMsg.contains("tắt ứng dụng") || lowerMsg.contains("out đi")
+        val isUpdateFaceCommand = lowerMsg.contains("cập nhật lại nhận diện") || lowerMsg.contains("cập nhật nhận diện") ||
+                lowerMsg.contains("cập nhật lại khuôn mặt") || lowerMsg.contains("cập nhật khuôn mặt") ||
+                lowerMsg.contains("quét lại mặt") || lowerMsg.contains("nhận diện lại mặt") ||
+                lowerMsg.contains("cập nhật lại mặt")
+
+        val effectiveAction = when {
+            chatResult.action != null -> chatResult.action
+            isAdmin && isLogoutCommand -> "logout"
+            isUpdateFaceCommand -> "update-face-detect"
+            else -> null
+        }
+
+        when (effectiveAction) {
+            "identity_denied" -> {
+                val deniedName = visionTracker.denyCurrentIdentity()
+                Log.i(TAG, "Người dùng phản bác danh tính: $deniedName. Đã rollback và chuyển về Tier 1 đón tiếp người lạ.")
+                runOnUiThread {
+                    binding.tvActivePerson.text = "👤 Khách chưa định danh"
+                    binding.tvTierBadge.text = "Thị giác: Tier 1 (Tìm người quen)"
+                    isWaitingForAiResponse = false
+                    speakAndShowBanner(chatResult.replyText, chatResult.emotion)
+                }
+                return
+            }
             "logout" -> {
+                Log.d(TAG, "Triggering logout action: Stopping mic and exiting to Home screen.")
+                voiceManager.stopListening()
+                voiceManager.isListeningPaused = true
+
+                var hasExited = false
+                val exitApp = {
+                    if (!hasExited) {
+                        hasExited = true
+                        try {
+                            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_HOME)
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            startActivity(homeIntent)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to launch HOME intent: ${e.message}")
+                        }
+                        finishAffinity()
+                    }
+                }
+
+                mainHandler.postDelayed({ exitApp() }, 4500)
+
                 runOnUiThread {
                     isWaitingForAiResponse = false
                     speakAndShowBanner(chatResult.replyText, chatResult.emotion) {
-                        finish()
+                        exitApp()
                     }
                 }
                 return
             }
             "update-face-detect" -> {
-                activePerson?.let { p ->
-                    visionTracker.captureCurrentFaceForPerson(
-                        name = p.name,
-                        preferredPronoun = p.preferredPronoun,
-                        gender = p.gender,
-                        role = p.role
+                val active = activePerson
+                if (active != null) {
+                    val captureResult = visionTracker.captureCurrentFaceForPerson(
+                        name = active.name,
+                        preferredPronoun = active.preferredPronoun,
+                        gender = active.gender,
+                        role = active.role
                     )
                     runOnUiThread {
-                        binding.tvVoiceStatus.text = "Đã cập nhật lại khuôn mặt cho ${p.preferredPronoun} ${p.name}"
+                        isWaitingForAiResponse = false
+                        if (captureResult.success) {
+                            val p = captureResult.person ?: active
+                            visionTracker.setActivePersonManually(p, hasFaceConfirmed = true)
+                            binding.tvVoiceStatus.text = "Đã cập nhật lại khuôn mặt cho ${p.preferredPronoun} ${p.name}"
+                            speakAndShowBanner(chatResult.replyText, chatResult.emotion)
+                        } else {
+                            speakAndShowBanner("Dạ em chưa nhìn rõ mặt của ${active.preferredPronoun} ạ, ${active.preferredPronoun} nhìn thẳng vào camera một chút nhé!", "thinking")
+                        }
+                    }
+                } else {
+                    runOnUiThread {
+                        isWaitingForAiResponse = false
+                        speakAndShowBanner("Dạ em chưa nhận diện được ai trước camera để cập nhật khuôn mặt ạ!", "thinking")
                     }
                 }
+                return
             }
         }
 
@@ -1256,6 +1422,19 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
 
     override fun onNoSpeechDetected(attempt: Int) {
         runOnUiThread {
+            if (pendingAmbiguityConfirmation != null) {
+                val amb = pendingAmbiguityConfirmation
+                pendingAmbiguityConfirmation = null
+                if (amb != null) {
+                    visionTracker.setAmbiguousCooldown(amb.candidate.id, durationMs = 60_000L)
+                }
+                voiceManager.isListeningPaused = true
+                voiceManager.stopListening()
+                binding.tvVoiceStatus.text = "Chạm để nói chuyện"
+                eveWebView.setEmotion("idle")
+                return@runOnUiThread
+            }
+
             val person = visionTracker.activePerson
             val pronoun = person?.preferredPronoun ?: "Anh/chị"
 

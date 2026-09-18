@@ -119,9 +119,16 @@ graph TB
 * **ML Kit Face Detection**: Phát hiện vị trí khuôn mặt trong khung hình siêu nhanh (30-40ms).
 * **MobileFaceNet (`mobilefacenet.tflite`)**: Trích xuất vector đặc trưng 192 chiều (192-dimensional floating-point vector) chuẩn hóa L2 từ ảnh khuôn mặt đã được căn chỉnh góc xoay Euler-Z.
 * **Gender Classifier (`model_gender_q.tflite`)**: Dự đoán giới tính người lạ (Nam/Nữ) để tự động xưng hô "Anh/Chị" lịch sự.
-* **`EveVisionTracker.kt` (Cơ chế 2-Tier)**:
-  - **Tier 1 (Định danh đầy đủ)**: Quét vector khuôn mặt, so khớp Cosine Similarity với tập dữ liệu người quen trong SQLite (ngưỡng tương đồng $\ge 0.78$).
+* **MobileFaceNet (`mobilefacenet.tflite`)**: Trích xuất vector đặc trưng 192 chiều (192-dimensional floating-point vector) chuẩn hóa L2 từ ảnh khuôn mặt đã được căn chỉnh góc xoay Euler-Z.
+* **Gender Classifier (`model_gender_q.tflite`)**: Dự đoán giới tính người lạ (Nam/Nữ) để tự động xưng hô "Anh/Chị" lịch sự.
+* **`EveVisionTracker.kt` (Cơ chế 2-Tier & Quản Lý Vector Thích Ứng)**:
+  - **Tier 1 (Định danh đầy đủ & Phân vùng 3 trạng thái)**:
+    + $\ge 0.80$: Nhận diện chắc chắn người quen (kèm Consensus check $\ge 2$ góc và Top-2 margin).
+    + $[0.65 - 0.79]$: Trạng thái "Ngờ ngợ" -> EVE cất giọng hỏi xác nhận và mở mic chờ câu trả lời.
+    + $< 0.65$: Người lạ hoàn toàn -> Chuyển sang luồng chào đón khách mới.
   - **Tier 2 (Bám khung tiết kiệm)**: Khi đã nhận diện đúng người, chuyển sang chế độ theo dõi vị trí khung hình (Bounding Box IoU Tracking) giúp tiết kiệm 70% CPU/GPU.
+  - **Quarantine & Rollback**: Toàn bộ vector tự học ngầm trong một phiên được cách ly lưu vết. Nếu người dùng phản bác danh tính (`identity_denied`), hệ thống tự động xóa sạch vector bẩn khỏi SQLite và đặt cooldown 30s.
+  - **Nearest Replacement & Moving Average (70/30)**: Khóa cố định Slot 0 (ảnh gốc), tìm slot gần nhất trong các slot 1..8 để hòa trộn vector $70/30$ khi được xác nhận.
   - **Anti-Flicker & Departure Debounce**: Đặt bộ trễ 2.5 giây khi người dùng khuất mặt trước khi phát câu chào tạm biệt để tránh gián đoạn khi quay đầu tạm thời.
 
 ### Tầng 4: Tầng Trí Tuệ Ngữ Nghĩa (Local AI Agent Layer)

@@ -32,12 +32,26 @@ class EveVisionTracker(
         private const val BACKGROUND_LEARN_INTERVAL_MS = 2500L // Tối thiểu 2.5s giữa các lần học ngầm góc mặt
     }
 
+    data class VisualPredictionInfo(
+        val candidateName: String?,
+        val candidatePronoun: String?,
+        val similarityPercent: Int,
+        val isAmbiguous: Boolean
+    )
+
     interface Listener {
         fun onPersonGreeted(person: PersonProfile, similarity: Float)
         fun onPersonDeparted(person: PersonProfile)
         fun onFaceTracked(person: PersonProfile, box: Rect)
         fun onUnknownFaceDetected(box: Rect)
         fun onUnknownPersonGreetable(box: Rect, gender: String, croppedFace: Bitmap)
+        fun onAmbiguousPersonDetected(
+            candidate: PersonProfile,
+            similarity: Float,
+            faceRect: Rect,
+            croppedFace: Bitmap,
+            embedding: FloatArray
+        )
         fun onNoFace()
     }
 
@@ -50,12 +64,26 @@ class EveVisionTracker(
     var hasVisualFaceConfirmed: Boolean = false
         private set
 
+    @Volatile
+    var latestVisualPrediction: VisualPredictionInfo? = null
+        private set
+
     private var lastSeenTimestamp: Long = 0L
     private val debounceGracePeriodMs: Long = 2500L // 2.5s grace period để phản hồi khi rời khung hình
 
     private var lastDepartedPersonId: String? = null
     private var departureCooldownUntil: Long = 0L
     private var activeTrackingId: Int? = null
+
+    // Misidentification & Quarantine tracking
+    private val sessionLearnedEmbeddings = mutableListOf<FloatArray>()
+    private val misidentifiedPersonCooldown = mutableMapOf<String, Long>()
+
+    // Ambiguity tracking fields
+    private var pendingAmbiguousMatch: PersonProfile? = null
+    private var consecutiveAmbiguousFrames: Int = 0
+    private var lastAmbiguousPromptTimestamp: Long = 0L
+    private val AMBIGUOUS_PROMPT_COOLDOWN_MS = 45_000L
 
     // Hysteresis & Anti-flicker fields
     private var pendingPersonMatch: PersonProfile? = null
@@ -184,12 +212,23 @@ class EveVisionTracker(
                 val croppedFace = ImageUtils.cropFace(fullBitmap, primaryFace.boundingBox, primaryFace.headEulerAngleZ)
                 if (croppedFace != null) {
                     val embedding = faceNetModel.getFaceEmbedding(croppedFace)
-                    val match = VectorMath.findBestPersonMatch(embedding, cachedPeople, threshold = VectorMath.SIMILARITY_ENTRY_THRESHOLD)
+                    // Lọc những người đang bị cooldown do nhận nhầm trong phiên gần đây
+                    val eligiblePeople = cachedPeople.filter { (misidentifiedPersonCooldown[it.id] ?: 0L) < now }
+                    val match = VectorMath.findBestPersonMatch(embedding, eligiblePeople, threshold = VectorMath.SIMILARITY_ENTRY_THRESHOLD)
 
                     if (match != null) {
-                        // Reset bộ đếm người lạ
+                        // Reset bộ đếm người lạ & ngờ ngợ
                         unknownFaceFirstSeenTime = 0L
                         consecutiveUnknownFrames = 0
+                        pendingAmbiguousMatch = null
+                        consecutiveAmbiguousFrames = 0
+
+                        latestVisualPrediction = VisualPredictionInfo(
+                            candidateName = match.person.name,
+                            candidatePronoun = match.person.preferredPronoun,
+                            similarityPercent = (match.similarity * 100).toInt(),
+                            isAmbiguous = false
+                        )
 
                         // Cooldown check: Tránh nhận diện và chào lại ngay lập tức khi người đó vừa rời đi
                         if (match.person.id == lastDepartedPersonId && now < departureCooldownUntil) {
@@ -207,6 +246,7 @@ class EveVisionTracker(
 
                         if (consecutiveKnownFrames >= REQUIRED_CONFIRMATION_FRAMES) {
                             consecutiveKnownFrames = 0
+                            sessionLearnedEmbeddings.clear() // Khởi tạo phiên nhận diện mới
                             var recognizedPerson = match.person
 
                             // Auto-adaptive learning: Nếu nhận diện chắc chắn và chưa đủ 9 vector
@@ -218,6 +258,7 @@ class EveVisionTracker(
                                     val updatedEmbeddings = recognizedPerson.faceEmbeddings.toMutableList().apply {
                                         add(embedding)
                                     }
+                                    sessionLearnedEmbeddings.add(embedding) // Cách ly: lưu vết để rollback nếu nhận nhầm
                                     val updatedPerson = recognizedPerson.copy(
                                         faceEmbeddings = updatedEmbeddings,
                                         lastSeenAt = now
@@ -241,14 +282,58 @@ class EveVisionTracker(
                             listener.onPersonGreeted(recognizedPerson, match.similarity)
                         }
                     } else {
-                        // Không khớp với người quen ở ngưỡng Entry (0.78)
+                        // Không khớp với người quen ở ngưỡng Entry (>= 0.80)
                         pendingPersonMatch = null
                         consecutiveKnownFrames = 0
 
-                        // Tính maxSim với toàn bộ kho vector
+                        // 1. Kiểm tra xem có rơi vào vùng NGỜ NGỢ [0.65 .. 0.80) với ai không
+                        val ambiguousMatch = VectorMath.checkAmbiguousMatch(embedding, eligiblePeople)
+                        if (ambiguousMatch != null) {
+                            latestVisualPrediction = VisualPredictionInfo(
+                                candidateName = ambiguousMatch.person.name,
+                                candidatePronoun = ambiguousMatch.person.preferredPronoun,
+                                similarityPercent = (ambiguousMatch.maxSimilarity * 100).toInt(),
+                                isAmbiguous = true
+                            )
+
+                            if (pendingAmbiguousMatch?.id == ambiguousMatch.person.id) {
+                                consecutiveAmbiguousFrames++
+                            } else {
+                                pendingAmbiguousMatch = ambiguousMatch.person
+                                consecutiveAmbiguousFrames = 1
+                            }
+
+                            val isAmbiguousCooldownOver = (now - lastAmbiguousPromptTimestamp > AMBIGUOUS_PROMPT_COOLDOWN_MS)
+
+                            // Cần 3 frame liên tiếp cùng ngờ ngợ 1 người và đã qua cooldown
+                            if (consecutiveAmbiguousFrames >= 3 && isAmbiguousCooldownOver) {
+                                consecutiveAmbiguousFrames = 0
+                                lastAmbiguousPromptTimestamp = now
+                                listener.onAmbiguousPersonDetected(
+                                    candidate = ambiguousMatch.person,
+                                    similarity = ambiguousMatch.maxSimilarity,
+                                    faceRect = primaryFace.boundingBox,
+                                    croppedFace = croppedFace,
+                                    embedding = embedding
+                                )
+                            }
+                            return
+                        } else {
+                            pendingAmbiguousMatch = null
+                            consecutiveAmbiguousFrames = 0
+                        }
+
+                        // 2. Tính maxSim với toàn bộ kho vector
                         val maxAnySim = cachedPeople.flatMap { it.faceEmbeddings }.maxOfOrNull {
                             VectorMath.cosineSimilarity(embedding, it)
                         } ?: 0f
+
+                        latestVisualPrediction = VisualPredictionInfo(
+                            candidateName = null,
+                            candidatePronoun = null,
+                            similarityPercent = (maxAnySim * 100).toInt(),
+                            isAmbiguous = false
+                        )
 
                         listener.onUnknownFaceDetected(primaryFace.boundingBox)
 
@@ -271,7 +356,7 @@ class EveVisionTracker(
                                 listener.onUnknownPersonGreetable(primaryFace.boundingBox, genderResult.gender, croppedFace)
                             }
                         } else {
-                            // VÙNG XÁM (0.65 <= maxAnySim < 0.78): Giữ nguyên, không vội kích hoạt chào người lạ
+                            // VÙNG XÁM không đủ consensus
                             unknownFaceFirstSeenTime = 0L
                             consecutiveUnknownFrames = 0
                         }
@@ -309,6 +394,7 @@ class EveVisionTracker(
                     // 2. Kiểm tra độ đa dạng: phải < 0.94 để chắc chắn đây là góc mặt mới có giá trị
                     if (maxPersonSim in 0.75f..0.94f && embeddings.size < 9) {
                         val updatedList = embeddings.toMutableList().apply { add(embedding) }
+                        sessionLearnedEmbeddings.add(embedding) // Lưu vết để rollback nếu người dùng phủ nhận danh tính
                         val updatedPerson = person.copy(
                             faceEmbeddings = updatedList,
                             lastSeenAt = System.currentTimeMillis()
@@ -366,6 +452,7 @@ class EveVisionTracker(
             // Person was visually present and has now stepped out of camera view
             lastDepartedPersonId = person.id
             departureCooldownUntil = now + 5000L // 5s cooldown
+            sessionLearnedEmbeddings.clear()
             activePerson = null
             activeTrackingId = null
             lastTrackedBox = null
@@ -463,7 +550,57 @@ class EveVisionTracker(
         return "data:image/jpeg;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
     }
 
+    /**
+     * Được gọi khi người dùng phản bác danh tính (ví dụ: "Tôi không phải Trung", "Nhầm người rồi").
+     * Lập tức rollback các vector tự học ngầm trong phiên này, đưa activePerson về null,
+     * chuyển về Tier 1 và đưa ID của người bị nhận nhầm vào danh sách cooldown tạm thời (30s).
+     */
+    @Synchronized
+    fun denyCurrentIdentity(): String? {
+        val deniedPerson = activePerson
+        val deniedPersonId = deniedPerson?.id
+        val now = System.currentTimeMillis()
+
+        if (deniedPersonId != null) {
+            // Đặt cooldown 30s để không nhận nhầm lại người này ngay frame tiếp theo
+            misidentifiedPersonCooldown[deniedPersonId] = now + 30_000L
+
+            // Rollback các vector tự học ngầm trong phiên này nếu có
+            if (sessionLearnedEmbeddings.isNotEmpty()) {
+                val personInDb = dbHelper.findPersonById(deniedPersonId)
+                if (personInDb != null) {
+                    val cleanEmbeddings = personInDb.faceEmbeddings.filterNot { emb ->
+                        sessionLearnedEmbeddings.any { learned -> learned.contentEquals(emb) }
+                    }
+                    val rolledBackPerson = personInDb.copy(faceEmbeddings = cleanEmbeddings)
+                    dbHelper.upsertPerson(rolledBackPerson)
+                    refreshCache()
+                    Log.i(TAG, "Đã rollback ${sessionLearnedEmbeddings.size} vector tự học ngầm của: ${personInDb.name}")
+                }
+            }
+        }
+
+        sessionLearnedEmbeddings.clear()
+        activePerson = null
+        activeTrackingId = null
+        lastTrackedBox = null
+        hasVisualFaceConfirmed = false
+        currentTier = VisionTier.TIER1_RECOGNITION
+        pendingPersonMatch = null
+        consecutiveKnownFrames = 0
+        unknownFaceFirstSeenTime = 0L
+        consecutiveUnknownFrames = 0
+        hasGreetedUnknownCurrentSession = true // Đã tương tác, không kích hoạt lại lời chào người lạ tự động gây lặp
+
+        return deniedPerson?.name
+    }
+
+    fun setAmbiguousCooldown(personId: String, durationMs: Long = 30_000L) {
+        misidentifiedPersonCooldown[personId] = System.currentTimeMillis() + durationMs
+    }
+
     fun setActivePersonManually(person: PersonProfile, hasFaceConfirmed: Boolean = false) {
+        sessionLearnedEmbeddings.clear()
         activePerson = person
         currentTier = VisionTier.TIER2_TRACKING
         lastSeenTimestamp = System.currentTimeMillis()
@@ -472,6 +609,7 @@ class EveVisionTracker(
     }
 
     fun reset() {
+        sessionLearnedEmbeddings.clear()
         activePerson = null
         activeTrackingId = null
         lastTrackedBox = null
@@ -479,5 +617,8 @@ class EveVisionTracker(
         hasGreetedUnknownCurrentSession = false
         currentTier = VisionTier.TIER1_RECOGNITION
         lastSeenTimestamp = 0L
+        pendingAmbiguousMatch = null
+        consecutiveAmbiguousFrames = 0
+        latestVisualPrediction = null
     }
 }

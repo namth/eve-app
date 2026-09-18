@@ -166,6 +166,26 @@ class EveDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         return rows > 0
     }
 
+    fun findPersonById(id: String): PersonProfile? {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_PEOPLE,
+            null,
+            "$COL_ID = ?",
+            arrayOf(id.trim()),
+            null,
+            null,
+            null,
+            "1"
+        )
+        cursor.use {
+            if (it.moveToFirst()) {
+                return cursorToPerson(it)
+            }
+        }
+        return null
+    }
+
     fun findPersonByName(name: String): PersonProfile? {
         val db = readableDatabase
         val cursor = db.query(

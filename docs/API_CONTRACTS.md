@@ -192,7 +192,7 @@ Sử dụng để n8n bắn thông báo đẩy về thiết bị EVE.
 | `preferred_pronoun`| `TEXT` | | Đại từ xưng hô: `"Anh"`, `"Chị"`, `"Chú"`, `"Bạn"` |
 | `role` | `TEXT` | | Quyền hạn: `"admin"` hoặc `"friend"` |
 | `avatar_base64` | `TEXT` | `NULL` | Ảnh khuôn mặt crop nhỏ (160x160 JPEG Base64) |
-| `face_embedding` | `BLOB` | `NULL` | Mảng float[] vector 192 chiều nhúng khuôn mặt |
+| `face_embedding` | `BLOB` | `NULL` | Mảng tối đa 9 vector 192 chiều (Slot 0: Ảnh gốc cố định; Slot 1..8: Vector thích nghi) |
 | `created_at` | `INTEGER` | `NOT NULL` | Thời gian tạo hồ sơ (Epoch millis) |
 | `last_seen_at` | `INTEGER` | `NOT NULL` | Thời gian lần gần nhất camera nhìn thấy |
 

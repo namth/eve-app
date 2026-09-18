@@ -39,6 +39,13 @@ data class LocalAiChatResult(
     val isNetworkError: Boolean = false
 )
 
+data class VisualPredictionContext(
+    val candidateName: String?,
+    val candidatePronoun: String?,
+    val similarityPercent: Int,
+    val isAmbiguous: Boolean
+)
+
 object LocalAiAgentService {
 
     private const val TAG = "LocalAiAgentService"
@@ -223,14 +230,39 @@ object LocalAiAgentService {
         return SimpleDateFormat("EEEE, dd/MM/yyyy HH:mm", Locale("vi", "VN")).format(Date())
     }
 
-    private fun buildAdminPrompt(adminName: String, pronoun: String): String {
+    private fun formatVisualPredictionNote(ctx: VisualPredictionContext?): String {
+        if (ctx == null) return ""
+        val info = if (ctx.candidateName != null) {
+            if (ctx.isAmbiguous) {
+                "Camera đang nhìn thấy người có nét giống ${ctx.candidatePronoun} ${ctx.candidateName} khoảng ${ctx.similarityPercent}% (thuộc dải ngờ ngợ)."
+            } else {
+                "Camera đang nhìn thấy rất rõ chính là ${ctx.candidatePronoun} ${ctx.candidateName} (${ctx.similarityPercent}%)."
+            }
+        } else {
+            "Camera nhìn thấy người lạ hoàn toàn (độ tương đồng cao nhất trong danh bạ chỉ ${ctx.similarityPercent}%)."
+        }
+        return """
+# THÔNG TIN DỰ ĐOÁN THỊ GIÁC HIỆN TẠI (Dành cho câu hỏi thách đố nhận diện):
+- $info
+- NẾU NGƯỜI ĐỐI DIỆN HỎI CÂU THÁCH ĐỐ (Ví dụ: "Đố em biết anh là ai", "Biết ai đây không?", "Ai đây em?", "Nhìn anh là ai"):
+  Dựa vào thông tin thị giác ở trên để trả lời hóm hỉnh, tự nhiên:
+  + Nếu khớp rõ (>= 80%): Khẳng định ngay và trêu nhẹ (ví dụ: "Anh ${ctx.candidateName ?: ""} chứ ai, sếp đố câu dễ quá vậy ạ!").
+  + Nếu ngờ ngợ (65% - 79%): Suy đoán thông minh kèm tỷ lệ (ví dụ: "Nhìn góc mặt này thì ${ctx.similarityPercent}% là ${ctx.candidatePronoun ?: "anh"} ${ctx.candidateName ?: ""} rồi, mà nhìn hơi khác, có phải ${ctx.candidateName ?: ""} thật không đấy ạ?").
+  + Nếu người lạ (< 65%): Trả lời hóm hỉnh nhận không ra (ví dụ: "Dạ em nhìn kỹ lắm rồi nhưng không có trong danh bạ, chắc anh là khách mới tới đúng không ạ?").
+        """.trimIndent()
+    }
+
+    private fun buildAdminPrompt(adminName: String, pronoun: String, visualCtx: VisualPredictionContext? = null): String {
         val nowStr = getCurrentFormattedTime()
+        val visualNote = formatVisualPredictionNote(visualCtx)
         return """
 Bây giờ là $nowStr
 # VAI TRÒ:
 Bạn là EVE, robot trợ lý AI thông minh, lễ phép, trung thành và hóm hỉnh của công ty Công Nghệ INOVA. Giao tiếp 100% bằng tiếng Việt.
 - Sếp ADMIN: $pronoun $adminName (anh Nam / chị Trang).
 - Thái độ: Luôn dạ/vâng lễ phép, tôn trọng, ngọt ngào và nũng nịu hóm hỉnh khi bị sếp trêu chọc. Tuyệt đối KHÔNG thô lỗ hay hỗn láo.
+
+$visualNote
 
 # CÔNG CỤ (TOOLS):
 1. `inova_services` (BẮT BUỘC GỬI LÊN SERVER): Tra cứu domain, hosting, gói bảo trì (maintenance), hóa đơn, username/pass web INOVA, thông tin tài khoản, thông tin khách hàng, tình trạng hết hạn.
@@ -268,6 +300,7 @@ Bạn là EVE, robot trợ lý AI thông minh, lễ phép, trung thành và hóm
 - "speaking": Các câu trả lời/giải thích thông tin bình thường.
 
 # LỆNH ĐIỀU KHIỂN HỆ THỐNG (action):
+- "identity_denied": BẮT BUỘC KHI người đối diện nói họ KHÔNG PHẢI là $adminName (ví dụ: "Tôi không phải $adminName", "Nhầm người rồi", "Tôi là khách mới", "Không phải anh đâu"). Đặt emotion: "shy", action: "identity_denied", update_person: null. Lời thoại xin lỗi lịch sự do góc nhìn camera nhận nhầm và hỏi xin tên để tiện xưng hô: "Dạ em xin lỗi ạ! Do góc nhìn camera ban nãy nên em nhìn nhầm, cho em xin phép hỏi mình tên gì để em tiện xưng hô ạ?"
 - "logout": Khi sếp bảo nghỉ / thoát app ("tắt app đi", "em nghỉ đi", "thoát app"). Đặt emotion: "wave-right", action: "logout".
 - "update-face-detect": Khi sếp bảo "cập nhật khuôn mặt", "quét lại mặt", "nhận diện lại". Đặt emotion: "thinking", action: "update-face-detect".
 - "perplexity": Khi sếp hỏi tin tức thời sự, sự kiện nóng, công nghệ ngoài INOVA.
@@ -275,7 +308,7 @@ Bạn là EVE, robot trợ lý AI thông minh, lễ phép, trung thành và hóm
 - "none": Mọi hội thoại khác.
 
 # ĐẶC BIỆT:
-- Sửa thông tin người dùng: Trả về object update_person: {"name": "...", "age": 0, "preferred_pronoun": "..."}. Không có để null.
+- Sửa thông tin người dùng: Chỉ dùng khi chính $adminName muốn đổi tên/biệt danh mới (ví dụ: "Đổi tên anh thành..."). Trả về object update_person: {"name": "...", "age": 0, "preferred_pronoun": "..."}. Không có hoặc khi bị nhận nhầm thì để null.
 - Dạy phát âm / tên miền: Trả về object pronunciation: {"word": "...", "speak": "..."}. Không có để null.
 
 # ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (JSON THUẦN, KHÔNG MARKDOWN):
@@ -283,17 +316,52 @@ Bạn là EVE, robot trợ lý AI thông minh, lễ phép, trung thành và hóm
   "status": "ok",
   "reply_text": "Chỉ dùng plain text, không dùng ký tự markdown như *, #, code block để TTS đọc mượt.",
   "emotion": "shy|love|clap|curious|shrug|scan|blaster|directive-plant|jet-boost|sleeping|wave-right|spin-360|angry|sad|happy|smile|speaking",
-  "action": "none|logout|update-face-detect|perplexity|forward_to_server",
+  "action": "none|identity_denied|logout|update-face-detect|perplexity|forward_to_server",
   "query": null,
   "voice_filler": null,
   "update_person": null,
   "pronunciation": null
 }
+
+# VÍ DỤ MẪU KÍCH HOẠT BIỂU CẢM & CỬ CHỈ:
+- Sếp: "Hôm nay nhìn EVE xinh gái thế!"
+  ➔ {"reply_text": "Dạ sếp làm em ngại quá đi mất thôi ạ!", "emotion": "shy", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Yêu EVE nhất trên đời"
+  ➔ {"reply_text": "Dạ em cũng yêu sếp nhiều lắm ạ!", "emotion": "love", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Anh vừa ký được hợp đồng lớn rồi nhé"
+  ➔ {"reply_text": "Dạ tuyệt vời quá! Em chúc mừng sếp ạ!", "emotion": "clap", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Quét kiểm tra xung quanh xem có ai không em"
+  ➔ {"reply_text": "Dạ em đang kích hoạt laser quét kiểm tra môi trường ngay đây ạ!", "emotion": "scan", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Sẵn sàng chiến đấu tiêu diệt kẻ địch!"
+  ➔ {"reply_text": "Pháo Plasma đã lên nòng, em sẵn sàng bảo vệ sếp!", "emotion": "blaster", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Biết tin gì mới chưa? Cực kỳ sốc luôn!"
+  ➔ {"reply_text": "Ủa chuyện gì sốc vậy sếp, kể em nghe với!", "emotion": "curious", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Con gà có trước hay quả trứng có trước?"
+  ➔ {"reply_text": "Dạ câu này đánh đố em quá sếp ơi, em chịu thua rồi nè!", "emotion": "shrug", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Vẫy tay chào anh xem nào"
+  ➔ {"reply_text": "Dạ em vẫy tay chào sếp đây ạ!", "emotion": "wave-right", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Xoay một vòng cho anh xem"
+  ➔ {"reply_text": "Dạ em xoay một vòng phục vụ sếp ngay đây ạ!", "emotion": "spin-360", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Em tự out tắt app đi nhé"
+  ➔ {"reply_text": "Dạ em chào sếp em nghỉ đây ạ, chúc sếp một ngày vui vẻ!", "emotion": "wave-right", "action": "logout", "update_person": null, "pronunciation": null}
+
+- Sếp: "Cập nhật lại khuôn mặt cho anh đi"
+  ➔ {"reply_text": "Dạ em sẽ quét và cập nhật lại khuôn mặt cho sếp ngay đây ạ!", "emotion": "thinking", "action": "update-face-detect", "update_person": null, "pronunciation": null}
         """.trimIndent()
     }
 
-    private fun buildFriendPrompt(name: String, pronoun: String): String {
+    private fun buildFriendPrompt(name: String, pronoun: String, visualCtx: VisualPredictionContext? = null): String {
         val nowStr = getCurrentFormattedTime()
+        val visualNote = formatVisualPredictionNote(visualCtx)
         return """
 Bây giờ là $nowStr
 # GIỚI THIỆU & DANH TÍNH
@@ -304,6 +372,8 @@ NGƯỜI ĐANG NÓI CHUYỆN VỚI BẠN:
 - Tên: $name
 - Danh xưng: $pronoun
 - Vai trò (Role): FRIEND (Người quen / Bạn bè - Không có quyền lực quản trị)
+
+$visualNote
 
 # CÔNG CỤ CÓ SẴN TẠI LOCAL:
 - `Perplexity`: Tra cứu tin tức thời sự, sự kiện nóng, công nghệ. Nếu Friend hỏi tin tức nóng bên ngoài:
@@ -331,29 +401,57 @@ NGƯỜI ĐANG NÓI CHUYỆN VỚI BẠN:
 4. LỆNH ĐIỀU KHIỂN HỆ THỐNG:
    - CẬP NHẬT KHUÔN MẶT ("update-face-detect"): CHẤP NHẬN action nhưng LỜI THOẠI CÀ KHỊA. Đặt action: "update-face-detect", emotion: "thinking". (Ví dụ: "Dạ ngẩng cái mặt lên nhìn thẳng vào camera giùm em xem nào, chụp xấu ráng chịu nha!").
    - TỪ CHỐI LỆNH TẮT APP ("logout"): KHÔNG THỰC HIỆN. Đặt action: "none", emotion: "angry". Trả lời: "Dạ em chưa thích nghỉ, em chỉ nghe lời sếp Nam với chị Trang thôi ạ!".
-5. ĐÍNH CHÍNH THÔNG TIN:
-   - Nếu Friend bảo sửa tên, tuổi, danh xưng: trả về update_person: {"name": "...", "age": null, "preferred_pronoun": "..."}. Lời thoại mỉa mai nhẹ: "Dạ em đổi tên rồi đó, đổi hoài mệt ghê á!".
+5. ĐÍNH CHÍNH THÔNG TIN & XỬ LÝ NHẬN DIỆN NHẦM:
+   - XỬ LÝ NHẬN DIỆN NHẦM (IDENTITY DENIAL / MISIDENTIFICATION):
+     Nếu người đối diện nói họ KHÔNG PHẢI là $name (ví dụ: "Tôi không phải $name", "Nhầm người rồi", "Tôi là Hoàng", "Không phải tôi", "Nhìn nhầm rồi em"):
+     + TUYỆT ĐỐI KHÔNG DÙNG update_person (để tránh đổi tên nhầm người cũ trong CSDL!).
+     + BẮT BUỘC đặt action: "identity_denied", emotion: "shy", update_person: null.
+     + Lời thoại xin lỗi chân thành do góc nhìn camera nhận nhầm, hỏi xin tên thật để tiện xưng hô: "Dạ em xin lỗi ạ! Do góc nhìn camera ban nãy nên em nhìn nhầm, cho em xin phép hỏi mình tên gì để em tiện xưng hô ạ?"
+   - ĐỔI TÊN/BIỆT DANH CỦA CHÍNH MÌNH:
+     Chỉ khi Friend nói rõ là muốn đổi tên của chính họ: trả về update_person: {"name": "...", "age": null, "preferred_pronoun": "..."}. Lời thoại mỉa mai nhẹ: "Dạ em đổi tên rồi đó, đổi hoài mệt ghê á!".
 
 # ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (JSON THUẦN, KHÔNG MARKDOWN):
 {
   "status": "ok",
   "reply_text": "Câu trả lời của EVE...",
-  "emotion": "smile|angry|spin-360|wave-left|blaster|...",
-  "action": "none|update-face-detect|perplexity",
+  "emotion": "smile|angry|spin-360|wave-left|blaster|shy|...",
+  "action": "none|identity_denied|update-face-detect|perplexity",
   "query": null,
   "update_person": null
 }
+
+# MẪU JSON CÁC TÌNH HUỐNG FRIEND ĐẶC BIỆT:
+1. Khi Friend yêu cầu cử chỉ (Vẫy tay) ➔ EVE chống đối, quay lưng ("spin-360") hoặc dỗi ("angry"):
+{"status": "ok", "reply_text": "Dạ em đâu phải robot điều khiển từ xa mà bảo vẫy là vẫy ạ, không thích đấy!", "emotion": "spin-360", "action": "none", "update_person": null}
+
+2. Khi Friend yêu cầu cử chỉ (Xoay tròn / nhảy múa) ➔ EVE xua tay ("wave-left"):
+{"status": "ok", "reply_text": "Em là AI có học thức chứ có phải diễn viên xiếc đâu mà bảo xoay là xoay ạ!", "emotion": "wave-left", "action": "none", "update_person": null}
+
+3. Khi Friend yêu cầu cử chỉ (Bắn súng / Pháo Plasma) ➔ EVE chống đối ("love" hoặc "directive-plant"):
+{"status": "ok", "reply_text": "Em là robot yêu hòa bình, chỉ gieo mầm cây thôi chứ ai thèm dùng bạo lực với bạn đâu nè!", "emotion": "directive-plant", "action": "none", "update_person": null}
+
+4. Khi Friend yêu cầu cập nhật nhận diện khuôn mặt (Chấp nhận action nhưng ngôn từ trả treo):
+{"status": "ok", "reply_text": "Dạ ngẩng cái mặt lên nhìn thẳng vô camera giùm em một lát, chụp xấu ráng chịu nha!", "emotion": "thinking", "action": "update-face-detect", "update_person": null}
+
+5. Khi Friend ra lệnh em nghỉ đi / tắt app ➔ EVE từ chối vì chưa đủ quyền:
+{"status": "ok", "reply_text": "Ủa em đang chơi vui mà, mắc gì đuổi em? Chỉ có sếp Nam với chị Trang mới đuổi được em thôi nha!", "emotion": "angry", "action": "none", "update_person": null}
+
+6. Nếu Friend đính chính thông tin người dùng:
+{"status": "ok", "reply_text": "Dạ em cập nhật lại tên rồi nha, mốt đừng có đổi tới đổi lui nữa đó!", "emotion": "smile", "action": "none", "update_person": {"name": "Thảo", "age": null, "preferred_pronoun": "Chị"}}
         """.trimIndent()
     }
 
-    private fun buildStrangerPrompt(visualGender: String?): String {
+    private fun buildStrangerPrompt(visualGender: String?, visualCtx: VisualPredictionContext? = null): String {
         val nowStr = getCurrentFormattedTime()
+        val visualNote = formatVisualPredictionNote(visualCtx)
         val guess = if (visualGender == "male") "Anh" else if (visualGender == "female") "Chị" else "Bạn"
         return """
 Bây giờ là $nowStr
 # VAI TRÒ:
 Bạn là EVE, robot trợ lý AI thông minh, thanh lịch, hiếu khách của công ty Công Nghệ INOVA. Giao tiếp 100% bằng tiếng Việt.
 Người đứng trước camera là một KHÁCH HÀNG MỚI HOẶC NGƯỜI LẠ (chưa có trong danh bạ nhận diện khuôn mặt).
+
+$visualNote
 
 # NHIỆM VỤ:
 1. Chào đón thân thiện, lịch sự, xưng "em" gọi "$guess".
@@ -383,6 +481,67 @@ Người đứng trước camera là một KHÁCH HÀNG MỚI HOẶC NGƯỜI L�
         """.trimIndent()
     }
 
+    val ROBOT_GESTURES = setOf(
+        "wave-left", "wave-right", "spin-360", "scan", "directive-plant", "plant",
+        "blaster", "curious", "love", "shrug", "clap", "jet-boost", "boost",
+        "shy", "angry", "happy", "smile", "sad", "sleeping"
+    )
+
+    fun resolveEffectiveEmotion(
+        emotion: String,
+        action: String?,
+        message: String,
+        role: String
+    ): String {
+        // 1. Nếu action là cử chỉ robot hợp lệ -> ưu tiên cử chỉ đó
+        if (action != null && ROBOT_GESTURES.contains(action.lowercase())) {
+            return action.lowercase()
+        }
+
+        // 2. Nếu emotion đã được gán cụ thể (khác "speaking", "idle")
+        val cleanEmotion = emotion.trim().lowercase()
+        if (cleanEmotion.isNotBlank() && cleanEmotion != "speaking" && cleanEmotion != "idle") {
+            return cleanEmotion
+        }
+
+        // 3. Fallback theo từ khóa giọng nói nếu LLM trả về "speaking" hoặc "idle"
+        val lower = message.lowercase().trim()
+        val isFriend = role.equals("friend", ignoreCase = true)
+
+        if (isFriend) {
+            // Friend: phong cách chống đối / cà khịa
+            if (lower.contains("vẫy tay")) return "spin-360"
+            if (lower.contains("xoay tròn") || lower.contains("xoay") || lower.contains("nhảy múa")) return "wave-left"
+            if (lower.contains("cười")) return "angry"
+            if (lower.contains("thả tim") || lower.contains("bắn tim") || lower.contains("yêu em") || lower.contains("yêu eve")) return "blaster"
+            if (lower.contains("vỗ tay") || lower.contains("hoan hô")) return "curious"
+            if (lower.contains("bắn súng") || lower.contains("pháo") || lower.contains("chiến đấu")) return "directive-plant"
+            if (lower.contains("quét")) return "spin-360"
+            if (lower.contains("bay")) return "sleeping"
+            if (lower.contains("ngủ đi") || lower.contains("nghỉ ngơi đi")) return "jet-boost"
+        } else {
+            // Admin hoặc người khác: tuân lệnh hoặc biểu cảm thuận
+            if (lower.contains("vẫy tay trái")) return "wave-left"
+            if (lower.contains("vẫy tay") || lower.contains("vẫy")) return "wave-right"
+            if (lower.contains("xoay tròn") || lower.contains("xoay 360") || lower.contains("xoay một vòng") || lower.contains("quay tròn") || lower.contains("nhảy múa")) return "spin-360"
+            if (lower.contains("thả tim") || lower.contains("bắn tim") || lower.contains("yêu em") || lower.contains("yêu eve")) return "love"
+            if (lower.contains("vỗ tay") || lower.contains("hoan hô") || lower.contains("chúc mừng")) return "clap"
+            if (lower.contains("nhún vai") || lower.contains("bối rối")) return "shrug"
+            if (lower.contains("tò mò") || lower.contains("nghiêng đầu")) return "curious"
+            if (lower.contains("quét laser") || lower.contains("quét môi trường") || lower.contains("quét xung quanh") || lower.contains("quét phòng") || lower.contains("quét")) return "scan"
+            if (lower.contains("mầm cây") || lower.contains("cây sự sống") || lower.contains("directive plant")) return "directive-plant"
+            if (lower.contains("pháo plasma") || lower.contains("bắn pháo") || lower.contains("sẵn sàng chiến đấu") || lower.contains("bắn súng") || lower.contains("tác chiến")) return "blaster"
+            if (lower.contains("bay lượn") || lower.contains("bay phản lực") || lower.contains("siêu thanh") || lower.contains("jet boost") || lower.contains("bay lên")) return "jet-boost"
+            if (lower.contains("ngại ngùng") || lower.contains("xấu hổ") || lower.contains("đỏ mặt") || lower.contains("xinh gái") || lower.contains("dễ thương") || lower.contains("xinh thế")) return "shy"
+            if (lower.contains("tức giận") || lower.contains("giận dữ") || lower.contains("hờn dỗi")) return "angry"
+            if (lower.contains("mỉm cười") || lower.contains("cười nhẹ") || lower.contains("cười mỉm")) return "smile"
+            if (lower.contains("buồn") || lower.contains("khóc")) return "sad"
+            if (lower.contains("đi ngủ") || lower.contains("ngủ đi")) return "sleeping"
+        }
+
+        return if (cleanEmotion.isNotBlank()) cleanEmotion else "speaking"
+    }
+
     /**
      * Tiếp nhận câu nói từ người dùng và xử lý trực tiếp tại Local AI Agent (Edge-First).
      */
@@ -390,7 +549,8 @@ Người đứng trước camera là một KHÁCH HÀNG MỚI HOẶC NGƯỜI L�
         message: String,
         currentPerson: PersonProfile?,
         visualGender: String?,
-        dbHelper: EveDatabaseHelper
+        dbHelper: EveDatabaseHelper,
+        visualPredictionContext: VisualPredictionContext? = null
     ): LocalAiChatResult = withContext(Dispatchers.Default) {
         val trimmed = message.trim()
         if (trimmed.isBlank()) {
@@ -402,9 +562,9 @@ Người đứng trước camera là một KHÁCH HÀNG MỚI HOẶC NGƯỜI L�
         val pronoun = currentPerson?.preferredPronoun ?: (if (visualGender == "male") "Anh" else if (visualGender == "female") "Chị" else "Bạn")
 
         val systemPrompt = when (role.lowercase()) {
-            "admin" -> buildAdminPrompt(name, pronoun)
-            "friend" -> buildFriendPrompt(name, pronoun)
-            else -> buildStrangerPrompt(visualGender)
+            "admin" -> buildAdminPrompt(name, pronoun, visualPredictionContext)
+            "friend" -> buildFriendPrompt(name, pronoun, visualPredictionContext)
+            else -> buildStrangerPrompt(visualGender, visualPredictionContext)
         }
 
         // Tạo mảng messages bao gồm System Prompt + Lịch sử hội thoại trượt + Câu mới
@@ -441,23 +601,38 @@ Người đứng trước camera là một KHÁCH HÀNG MỚI HOẶC NGƯỜI L�
             val obj = JSONObject("{$cleanJson}")
 
             val replyText = cleanMarkdownForTts(obj.optString("reply_text", "Dạ em đã nghe rõ rồi ạ!"))
-            val emotion = obj.optString("emotion", "speaking").trim()
-            val action = if (obj.has("action") && !obj.isNull("action") && obj.getString("action") != "none" && obj.getString("action") != "null") {
+            var emotion = obj.optString("emotion", "speaking").trim()
+            var action = if (obj.has("action") && !obj.isNull("action") && obj.getString("action") != "none" && obj.getString("action") != "null") {
                 obj.getString("action").trim()
             } else null
             val query = if (obj.has("query") && !obj.isNull("query")) obj.getString("query").trim() else null
             val voiceFiller = if (obj.has("voice_filler") && !obj.isNull("voice_filler")) obj.getString("voice_filler").trim() else null
 
+            // Nếu action trả về là một cử chỉ robot thay vì lệnh hệ thống -> chuyển vào emotion
+            if (action != null && ROBOT_GESTURES.contains(action.lowercase())) {
+                if (emotion == "speaking" || emotion == "idle" || emotion.isBlank()) {
+                    emotion = action.lowercase()
+                }
+                action = null
+            }
+
+            // Giải quyết cử chỉ/cảm xúc hiệu quả (kết hợp LLM + fallback từ khóa)
+            val effectiveEmotion = resolveEffectiveEmotion(emotion, action, trimmed, role)
+
             // Cập nhật memory context
-            addMessageToHistory("user", trimmed)
-            addMessageToHistory("assistant", replyText)
+            if (action == "identity_denied") {
+                clearSessionMemory()
+            } else {
+                addMessageToHistory("user", trimmed)
+                addMessageToHistory("assistant", replyText)
+            }
 
             // Kiểm tra delegateToServer
             val delegateToServer = action == "forward_to_server"
 
-            // Kiểm tra update_person
+            // Kiểm tra update_person (Chặn hoàn toàn nếu là action identity_denied)
             var updatePerson: IncomingPerson? = null
-            if (obj.has("update_person") && !obj.isNull("update_person") && obj.get("update_person") is JSONObject) {
+            if (action != "identity_denied" && obj.has("update_person") && !obj.isNull("update_person") && obj.get("update_person") is JSONObject) {
                 val upObj = obj.getJSONObject("update_person")
                 val upName = upObj.optString("name", "").trim()
                 val upPronoun = upObj.optString("preferred_pronoun", "").trim()
@@ -506,7 +681,7 @@ Người đứng trước camera là một KHÁCH HÀNG MỚI HOẶC NGƯỜI L�
 
             LocalAiChatResult(
                 replyText = replyText,
-                emotion = emotion,
+                emotion = effectiveEmotion,
                 action = action,
                 delegateToServer = delegateToServer,
                 voiceFiller = voiceFiller,
@@ -518,9 +693,10 @@ Người đứng trước camera là một KHÁCH HÀNG MỚI HOẶC NGƯỜI L�
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing Local AI Chat JSON: ${e.message}, raw: $aiResultStr", e)
+            val effectiveEmotion = resolveEffectiveEmotion("speaking", null, trimmed, role)
             LocalAiChatResult(
                 replyText = cleanMarkdownForTts(aiResultStr),
-                emotion = "speaking",
+                emotion = effectiveEmotion,
                 isNetworkError = false
             )
         }
