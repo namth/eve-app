@@ -137,16 +137,20 @@ graph TB
   - Mô hình: `openai/gpt-4o-mini`.
   - Phân tích ngữ nghĩa chiều sâu (Deep Semantic Analysis) giải quyết bài toán mà các bộ lọc từ ngữ truyền thống thất bại:
     1. **Gộp & Tóm tắt Ngữ nghĩa**: Đọc toàn bộ danh sách thông báo từ n8n, nhận diện các thông báo khác nhau về mặt câu chữ nhưng cùng chung bản chất sự kiện, gom thành nhóm và tạo bài báo cáo 2-3 câu chuẩn mực tiếng Việt.
-    2. **Phân loại Ý định Xác nhận**: Hiểu các câu nói tiếng Việt tự nhiên phức tạp, tiếng lóng, tiếng phủ định kép.
-    3. **Trích xuất Danh tính**: Bóc tách tên và đại từ xưng hô tự nhiên.
-    4. **Dự phòng An Toàn (Graceful Fallback)**: Nếu mạng chập chờn hoặc timeout (> 4 giây), tự động lùi về thuật toán rule-based nội bộ, đảm bảo hệ thống không bao giờ bị đơ.
+    2. **Chau Chuốt Lời Thoại Kịch Bản (Dynamic Script Polisher)**: Toàn bộ câu thoại kịch bản (chào hỏi, tạm biệt, nghi vấn ngờ ngợ, nhắc nhở im lặng, xung đột danh tính...) được đưa qua Fast LLM (budget 2.5s) để nói tự nhiên, sinh động, hóm hỉnh theo thời gian thực thay vì lặp lại 1 mẫu câu cứng.
+    3. **Multi-Variant Fallback Pool**: Khi ngoại tuyến hoặc timeout, tự động chọn ngẫu nhiên từ kho 4-6 câu thoại phong phú cho từng tình huống, đảm bảo EVE không bao giờ bị đơn điệu.
+    4. **Phân loại Ý định Xác nhận**: Hiểu các câu nói tiếng Việt tự nhiên phức tạp, tiếng lóng, tiếng phủ định kép.
+    5. **Trích xuất Danh tính**: Bóc tách tên và đại từ xưng hô tự nhiên.
+    6. **Xử lý Đứt quãng & Phỏng đoán Ngữ cảnh (Conversational Clarification)**: Khi câu nói của người dùng lấp lửng, thiếu nghĩa hoặc đứt đoạn, Local AI Agent kết hợp bộ nhớ phiên trượt 8 tin nhắn gần nhất (`sessionConversationHistory`) để suy luận dự đoán điều người dùng muốn hỏi tiếp. Nếu không có ngữ cảnh, EVE tự động hỏi lại hóm hỉnh theo role (Admin: ngoan ngoãn/ngơ ngác đáng yêu; Friend: mỉa mai, lém lỉnh; kèm emotion: `curious`/`shrug`). Khi STT không bắt được từ nào (`ERROR_NO_MATCH`), hệ thống trực tiếp bỏ qua câu nói, không phát tiếng để tránh phiền.
+    7. **Dự phòng An Toàn (Graceful Fallback)**: Nếu mạng chập chờn hoặc timeout (> 4 giây), tự động lùi về thuật toán rule-based nội bộ, đảm bảo hệ thống không bao giờ bị đơ.
 
 ### Tầng 5: Tầng Giao Diện & Tương Tác Hai Chiều (Interaction Layer)
 * **`EveWebViewHelper.kt` & Canvas HTML5 (`eve_robot_interface.html`)**:
   - Giao diện robot EVE hoạt họa mượt mà 60fps qua WebView.
   - 6 trạng thái cảm xúc chính: `idle`, `happy`, `thinking`, `speaking`, `sleeping`, `wakeup` cùng các cử chỉ `wave-left`, `wave-right`, `spin-360`.
-* **`VoiceAssistantManager.kt`**:
+* **`VoiceAssistantManager.kt` & Vòng Đời Ô Chữ Nói (Speech Banner)**:
   - **Voice Activity Detection (VAD)**: Lắng nghe liên tục, phát hiện khoảng lặng khi người dùng dứt câu để tự động ngắt thu âm.
+  - **Đồng bộ Vòng đời Ô Chữ (Speech Banner Lifecycle)**: Ô text hiển thị liên tục trong toàn bộ thời gian EVE đang đọc âm thanh TTS và biến mất ngay lập tức khi âm thanh vừa dứt (`onDone`), hoặc ngay khi Smart Barge-in kích hoạt.
   - **Barge-in (Ngắt lời tức thì)**: Khi EVE đang nói TTS mà người dùng cất giọng, EVE lập tức im lặng và chuyển sang trạng thái lắng nghe.
   - **Text-to-Speech (TTS)**: Phát âm tiếng Việt chuẩn xác qua Google TTS Engine kết hợp từ điển `TtsNormalizer`.
 

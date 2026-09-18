@@ -28,3 +28,12 @@ Chào mừng bạn đến với bộ tài liệu kỹ thuật toàn diện của
    - Đẩy thông báo tức thì từ n8n qua Google Firebase Cloud Messaging v1.
    - Hoạt động ổn định ngay cả khi app đang tắt, chạy nền hoặc màn hình khóa.
    - Lưu trữ hàng đợi thông báo chưa đọc vào SQLite nội bộ trên thiết bị.
+
+---
+
+## 📐 Đặc Tả Tính Năng Mới (Feature Specifications)
+
+| Mã tính năng | Tài liệu đặc tả | Mô tả tóm tắt |
+| :--- | :--- | :--- |
+| `FEAT-VISION-AMBIGUOUS-CONFIRM` | **[ambiguous-face-confirmation-and-moving-average.md](./features/ambiguous-face-confirmation-and-moving-average.md)** | Xác nhận nhận diện ngờ ngợ ($0.65 \le \text{Sim} < 0.80$) và thuật toán Nearest Replacement / Moving Average 70/30. |
+| `FEAT-VOICE-BANNER-CLARIFICATION` | **[speech-banner-lifecycle-and-conversational-clarification.md](./features/speech-banner-lifecycle-and-conversational-clarification.md)** | Quản lý vòng đời hiển thị ô text EVE đồng bộ với TTS, xử lý câu nói lấp lửng/vô nghĩa và phán đoán ngữ cảnh. |

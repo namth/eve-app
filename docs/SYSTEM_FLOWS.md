@@ -117,38 +117,70 @@ sequenceDiagram
 
 ---
 
-## 🎙️ Luồng 4: Đàm Thoại Giọng Nói Hai Chiều (Hands-Free Voice Interaction)
+## 🎙️ Luồng 4: Đàm Thoại Giọng Nói Hai Chiều & Xử Lý Câu Nói Không Rõ Nghĩa (Hands-Free Voice & Conversational Clarification)
 
+### Sơ đồ tuần tự:
 ```mermaid
 sequenceDiagram
     autonumber
     actor User as Người dùng
-    participant Mic as VoiceAssistantManager (Microphone)
+    participant Mic as VoiceAssistantManager (Microphone + VAD)
     participant Main as MainActivity
-    participant N8n as n8n AI Chat Webhook
-    participant Agent as LocalAiAgentService (Fallback)
-    participant UI as EveWebViewHelper
+    participant Banner as Card Speech Banner (tvSpeechText)
+    participant Agent as LocalAiAgentService (openai/gpt-4o-mini)
+    participant N8n as n8n Server (Chỉ khi forward_to_server)
+    participant UI as EveWebViewHelper (Canvas Robot)
     participant TTS as Google TTS Speaker
 
-    Note over Mic: VAD (Voice Activity Detection) lắng nghe liên tục
-    User->>Mic: Cất giọng nói (ví dụ: "EVE ơi thời tiết hôm nay thế nào?")
-    Mic->>UI: setEmotion('thinking')
-    Mic->>Main: onSpeechResult(transcript)
-    
-    Main->>N8n: Gửi POST webhook kèm context, personProfile, sessionId
-    alt n8n phản hồi thành công
-        N8n-->>Main: N8nChatResponse (replyText, emotion, action, audioUrl)
-        Main->>UI: setEmotion(response.emotion)
-        Main->>TTS: speak(response.replyText)
-    else n8n timeout hoặc lỗi mạng
-        Main->>Agent: parseSystemAction(transcript, currentPerson, dbHelper)
-        Agent-->>Main: LocalAiActionResult (replyText, emotion, action)
-        Main->>UI: setEmotion(action.emotion)
-        Main->>TTS: speak(action.replyText)
-    end
+    Note over Mic: VAD lắng nghe liên tục (Hands-Free)
+    User->>Mic: Cất giọng nói
 
-    Note over TTS,User: Tính năng Barge-in: Nếu người dùng nói chen ngang khi EVE đang phát TTS, EVE lập tức dừng loa và quay lại lắng nghe!
+    alt Không bắt được từ nào (ERROR_NO_MATCH / Muffled)
+        Mic->>Main: Bỏ qua hoàn toàn, không phát tiếng
+        Note over Mic: Tiếp tục lắng nghe Hands-Free
+    else Có nhận dạng được từ
+        Mic->>UI: setEmotion('thinking')
+        Mic->>Main: onSpeechResult(transcript)
+
+        alt Câu nói lấp lửng / đứt quãng / vô nghĩa
+            Main->>Agent: processChatTurn(transcript, slidingMemory, visualCtx)
+            alt Có ngữ cảnh trong 8 tin nhắn gần nhất
+                Agent-->>Main: Phỏng đoán ý định: "Có phải [pronoun] muốn hỏi tiếp về...?"
+            else Không có ngữ cảnh
+                Agent-->>Main: Hỏi lại tự nhiên/hóm hỉnh theo role (Admin/Friend)
+            end
+        else Câu hỏi tra cứu kỹ thuật INOVA (domain, hosting, hóa đơn)
+            Main->>Agent: processChatTurn(transcript)
+            Agent-->>Main: action = "forward_to_server"
+            Main->>N8n: Gửi POST webhook tra cứu
+            N8n-->>Main: N8nChatResponse (replyText, emotion)
+        else Hội thoại thông thường
+            Main->>Agent: processChatTurn(transcript)
+            Agent-->>Main: LocalAiChatResult (replyText, emotion)
+        end
+
+        Main->>Banner: text = replyText, visibility = VISIBLE
+        Main->>UI: setEmotion(emotion)
+        Main->>TTS: speak(replyText)
+        
+        alt EVE đọc xong câu nói bình thường
+            TTS-->>Main: onDone() callback
+            Main->>Banner: visibility = GONE (Ẩn ngay lập tức khi dứt tiếng)
+            Main->>UI: setEmotion('idle')
+        else Smart Barge-In: Người dùng nói chen ngang khi EVE đang đọc
+            User->>Mic: Cất tiếng nói vượt ngưỡng VAD
+            Mic->>TTS: Dừng âm thanh lập tức
+            Mic->>Banner: visibility = GONE (Ẩn ngay lập tức)
+            Mic->>UI: setEmotion('thinking')
+        end
+    end
 ```
+
+### Quy tắc vòng đời hiển thị Ô Chữ (`cardSpeechBanner`):
+1. **Hiển thị liên tục:** Banner xuất hiện ngay khi EVE bắt đầu nói và giữ nguyên trong suốt toàn bộ thời lượng phát âm thanh (không giới hạn bởi timeout 7s cũ).
+2. **Ẩn tức thì khi dứt lời:** Ngay khi `ttsSpeaker` hoàn thành việc đọc câu (`onDone`), banner được set `View.GONE` ngay lập tức.
+3. **Ngắt khi Barge-in:** Nếu người dùng chen ngang, banner biến mất tức thì để nhường chỗ cho phản hồi mới.
+
 
 ---
 

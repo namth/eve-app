@@ -16,9 +16,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
 data class LocalAiActionResult(
     val replyText: String,
@@ -46,6 +48,32 @@ data class VisualPredictionContext(
     val isAmbiguous: Boolean
 )
 
+data class PolishedSpeech(
+    val text: String,
+    val emotion: String = "speaking"
+)
+
+enum class ScriptedSpeechType {
+    GREETING_KNOWN,
+    GREETING_STRANGER,
+    AMBIGUOUS_QUESTION,
+    AMBIGUOUS_CONFIRMED,
+    AMBIGUOUS_DENIED,
+    FAREWELL,
+    SILENCE_REMINDER,
+    DISAMBIGUATION_QUESTION,
+    DISAMBIGUATION_CONFIRMED,
+    DISAMBIGUATION_NEW_PERSON,
+    DISAMBIGUATION_CLARIFY,
+    IDENTITY_CONFLICT_QUESTION,
+    IDENTITY_CONFLICT_CONFIRMED,
+    IDENTITY_CONFLICT_DENIED,
+    FACE_NOT_CLEAR,
+    FACE_NO_ONE,
+    ADMIN_BRIEFING_SINGLE,
+    PRONOUN_UPDATE
+}
+
 object LocalAiAgentService {
 
     private const val TAG = "LocalAiAgentService"
@@ -55,6 +83,12 @@ object LocalAiAgentService {
     private val client = OkHttpClient.Builder()
         .connectTimeout(6, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
+        .build()
+
+    // Ultra-fast client for Script Polishing (2.5s maximum budget to ensure natural conversational cadence)
+    private val fastClient = OkHttpClient.Builder()
+        .connectTimeout(2, TimeUnit.SECONDS)
+        .readTimeout(2500, TimeUnit.MILLISECONDS)
         .build()
 
     // Bộ nhớ phiên hội thoại trượt (Sliding Window Context: tối đa 8 tin nhắn gần nhất)
@@ -478,6 +512,73 @@ $visualNote
   "query": null,
   "new_person": null
 }
+
+# VÍ DỤ MẪU (BẮT BUỘC TRÍCH XUẤT new_person KHI NGƯỜI DÙNG GIỚI THIỆU TÊN):
+1. Khách nam xưng tên:
+User: "Chào em, anh là Tuấn"
+➔
+{
+  "status": "ok",
+  "reply_text": "Dạ em chào anh Tuấn ạ! Rất vui được đón tiếp anh đến với INOVA, em đã ghi nhớ tên và khuôn mặt của anh rồi ạ!",
+  "emotion": "smile",
+  "action": "none",
+  "query": null,
+  "new_person": {
+    "name": "Tuấn",
+    "preferred_pronoun": "Anh",
+    "age": null,
+    "gender": "male",
+    "role": "friend"
+  }
+}
+
+2. Khách nữ xưng tên:
+User: "Chị tên là Mai"
+➔
+{
+  "status": "ok",
+  "reply_text": "Dạ em chào chị Mai ạ! Em rất vui được làm quen với chị tại INOVA!",
+  "emotion": "happy",
+  "action": "none",
+  "query": null,
+  "new_person": {
+    "name": "Mai",
+    "preferred_pronoun": "Chị",
+    "age": null,
+    "gender": "female",
+    "role": "friend"
+  }
+}
+
+3. Khách xưng chú/bác:
+User: "Cứ gọi tôi là chú Ba nhé"
+➔
+{
+  "status": "ok",
+  "reply_text": "Dạ em chào chú Ba ạ! Rất hân hạnh được đón tiếp chú đến với INOVA!",
+  "emotion": "smile",
+  "action": "none",
+  "query": null,
+  "new_person": {
+    "name": "Ba",
+    "preferred_pronoun": "Chú",
+    "age": null,
+    "gender": "male",
+    "role": "friend"
+  }
+}
+
+4. Khách chỉ chào hỏi thông thường chưa nói tên:
+User: "Chào em"
+➔
+{
+  "status": "ok",
+  "reply_text": "Dạ em chào $guess ạ! Em là robot EVE của công ty INOVA. Em có thể xin phép được biết tên của $guess để tiện xưng hô không ạ?",
+  "emotion": "smile",
+  "action": "none",
+  "query": null,
+  "new_person": null
+}
         """.trimIndent()
     }
 
@@ -650,14 +751,42 @@ $visualNote
 
             // Kiểm tra new_person (đăng ký người mới)
             var newPerson: IncomingPerson? = null
-            if (obj.has("new_person") && !obj.isNull("new_person") && obj.get("new_person") is JSONObject) {
-                val npObj = obj.getJSONObject("new_person")
-                val npName = npObj.optString("name", "").trim()
-                val npPronoun = npObj.optString("preferred_pronoun", pronoun).trim()
-                val npAge = if (npObj.has("age") && !npObj.isNull("age")) npObj.getInt("age") else null
-                val npGender = npObj.optString("gender", visualGender ?: "unknown").trim()
-                val npRole = npObj.optString("role", if (npName.equals("nam", ignoreCase = true)) "admin" else "friend").trim()
+            val personObj = when {
+                obj.has("new_person") && !obj.isNull("new_person") && obj.get("new_person") is JSONObject -> obj.getJSONObject("new_person")
+                obj.has("person") && !obj.isNull("person") && obj.get("person") is JSONObject -> obj.getJSONObject("person")
+                obj.has("detected_person") && !obj.isNull("detected_person") && obj.get("detected_person") is JSONObject -> obj.getJSONObject("detected_person")
+                obj.has("newPerson") && !obj.isNull("newPerson") && obj.get("newPerson") is JSONObject -> obj.getJSONObject("newPerson")
+                else -> null
+            }
+
+            if (personObj != null) {
+                var npName = personObj.optString("name", "").trim()
+                var npPronoun = if (personObj.has("preferred_pronoun") && !personObj.isNull("preferred_pronoun")) {
+                    personObj.getString("preferred_pronoun").trim()
+                } else if (personObj.has("preferredPronoun") && !personObj.isNull("preferredPronoun")) {
+                    personObj.getString("preferredPronoun").trim()
+                } else pronoun
+
+                // Nếu name bị gán nhầm thành đại từ xưng hô thuần túy (ví dụ: name = "Chú"):
+                if (npName.isNotBlank() && N8nService.PRONOUN_BLACKLIST.contains(npName.lowercase())) {
+                    if (npPronoun.isBlank() || npPronoun == "Bạn") {
+                        npPronoun = npName.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                    }
+                    npName = ""
+                }
+
+                // Viết hoa các chữ cái đầu của tên
                 if (npName.isNotBlank()) {
+                    npName = npName.split(" ").filter { it.isNotBlank() }.joinToString(" ") { w ->
+                        w.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                    }
+                }
+
+                val npAge = if (personObj.has("age") && !personObj.isNull("age")) personObj.getInt("age") else null
+                val npGender = personObj.optString("gender", visualGender ?: "unknown").trim()
+                val npRole = personObj.optString("role", if (npName.equals("nam", ignoreCase = true)) "admin" else "friend").trim()
+
+                if (npName.isNotBlank() || npPronoun.isNotBlank()) {
                     newPerson = IncomingPerson(
                         name = npName,
                         age = npAge,
@@ -666,6 +795,25 @@ $visualNote
                         role = npRole
                     )
                 }
+            }
+
+            // Fallback tự động: Quét regex tiếng Việt nếu LLM không trả về new_person nhưng câu nói là tự giới thiệu tên
+            if (newPerson == null || newPerson.name.isBlank()) {
+                val localExtracted = N8nService.extractNameFromMessage(trimmed)
+                if (localExtracted != null && (localExtracted.name.isNotBlank() || localExtracted.preferredPronoun.isNotBlank())) {
+                    val resolvedGender = if (localExtracted.gender != "unknown") localExtracted.gender else (visualGender ?: "unknown")
+                    val resolvedRole = if (localExtracted.name.equals("nam", ignoreCase = true)) "admin" else "friend"
+                    newPerson = localExtracted.copy(
+                        gender = resolvedGender,
+                        role = resolvedRole
+                    )
+                }
+            }
+
+            var finalReplyText = replyText
+            // Nếu phát hiện ra người mới và có tên nhưng câu trả lời của LLM chưa chào tên:
+            if (newPerson != null && newPerson.name.isNotBlank() && !finalReplyText.contains(newPerson.name, ignoreCase = true)) {
+                finalReplyText = "Dạ em chào ${newPerson.preferredPronoun} ${newPerson.name} ạ! Rất vui được đón tiếp ${newPerson.preferredPronoun} đến với INOVA, em đã ghi nhớ tên và khuôn mặt của ${newPerson.preferredPronoun} rồi ạ!"
             }
 
             // Kiểm tra pronunciation
@@ -680,7 +828,7 @@ $visualNote
             }
 
             LocalAiChatResult(
-                replyText = replyText,
+                replyText = finalReplyText,
                 emotion = effectiveEmotion,
                 action = action,
                 delegateToServer = delegateToServer,
@@ -694,9 +842,24 @@ $visualNote
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing Local AI Chat JSON: ${e.message}, raw: $aiResultStr", e)
             val effectiveEmotion = resolveEffectiveEmotion("speaking", null, trimmed, role)
+            val fallbackPerson = if (currentPerson == null || role == "stranger" || aiResultStr.contains("identity_denied")) {
+                val extracted = N8nService.extractNameFromMessage(trimmed)
+                if (extracted != null && (extracted.name.isNotBlank() || extracted.preferredPronoun.isNotBlank())) {
+                    extracted.copy(
+                        gender = if (extracted.gender != "unknown") extracted.gender else (visualGender ?: "unknown"),
+                        role = if (extracted.name.equals("nam", ignoreCase = true)) "admin" else "friend"
+                    )
+                } else null
+            } else null
+
+            val fallbackReply = if (fallbackPerson != null && fallbackPerson.name.isNotBlank()) {
+                "Dạ em chào ${fallbackPerson.preferredPronoun} ${fallbackPerson.name} ạ! Rất vui được đón tiếp ${fallbackPerson.preferredPronoun} đến với INOVA, em đã ghi nhớ tên và khuôn mặt của ${fallbackPerson.preferredPronoun} rồi ạ!"
+            } else cleanMarkdownForTts(aiResultStr)
+
             LocalAiChatResult(
-                replyText = cleanMarkdownForTts(aiResultStr),
+                replyText = fallbackReply,
                 emotion = effectiveEmotion,
+                newPerson = fallbackPerson,
                 isNetworkError = false
             )
         }
@@ -961,6 +1124,366 @@ $visualNote
             hasConfirm && !hasDeny -> MainActivity.ConfirmationIntent.CONFIRMED
             hasDeny && !hasConfirm -> MainActivity.ConfirmationIntent.DENIED
             else -> MainActivity.ConfirmationIntent.AMBIGUOUS
+        }
+    }
+
+    private fun getTimeOfDayGreetingVi(): String {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        return when (hour) {
+            in 5..10 -> "buổi sáng"
+            in 11..13 -> "buổi trưa"
+            in 14..17 -> "buổi chiều"
+            in 18..22 -> "buổi tối"
+            else -> "đêm muộn"
+        }
+    }
+
+    private fun buildSpeechPolisherPrompt(
+        type: ScriptedSpeechType,
+        person: PersonProfile?,
+        params: Map<String, String>
+    ): String {
+        val name = person?.name ?: params["name"] ?: ""
+        val pronoun = person?.preferredPronoun ?: params["pronoun"] ?: (if (person?.gender == "male") "anh" else if (person?.gender == "female") "chị" else "mình")
+        val role = person?.role ?: params["role"] ?: ""
+        val timeOfDay = getTimeOfDayGreetingVi()
+        val timeStr = params["timeStr"] ?: "hôm trước"
+        val oldPronoun = params["oldPronoun"] ?: "anh"
+        val oldName = params["oldName"] ?: ""
+        val newName = params["newName"] ?: name
+        val newPronoun = params["newPronoun"] ?: pronoun
+        val content = params["content"] ?: ""
+        val gender = params["gender"] ?: person?.gender ?: "unknown"
+        val sim = params["similarityPercent"] ?: "70"
+
+        return when (type) {
+            ScriptedSpeechType.GREETING_KNOWN -> {
+                "TÌNH HUỐNG: Robot vừa nhìn thấy người quen trước camera ($timeOfDay). Tên: $name, Danh xưng: $pronoun, Vai trò: $role. Hãy chào $pronoun $name thật ấm áp, tươi vui, tôn trọng, có thể đề cập đến thời điểm $timeOfDay."
+            }
+            ScriptedSpeechType.GREETING_STRANGER -> {
+                val g = if (gender == "male") "anh" else if (gender == "female") "chị" else "bạn"
+                "TÌNH HUỐNG: Robot thấy người lạ chưa đăng ký đứng trước camera. Giới tính dự đoán: $g. Hãy chào đón nồng hậu, lịch sự giới thiệu bản thân là EVE và xin phép được biết tên của $g để tiện làm quen, xưng hô."
+            }
+            ScriptedSpeechType.AMBIGUOUS_QUESTION -> {
+                "TÌNH HUỐNG: Robot nhìn thấy người có nét giống $pronoun $name khoảng $sim% (thuộc dải ngờ ngợ). Hãy hỏi xác nhận nhẹ nhàng, hóm hỉnh và khéo léo xem có đúng là $pronoun $name không hay em nhìn nhầm."
+            }
+            ScriptedSpeechType.AMBIGUOUS_CONFIRMED -> {
+                "TÌNH HUỐNG: Người đối diện vừa xác nhận đúng họ là $pronoun $name sau khi robot hỏi nghi vấn. Hãy reo vui chào $pronoun $name và thông báo đã ghi nhớ thêm góc mặt mới này vào bộ nhớ để lần sau nhận diện nhanh hơn."
+            }
+            ScriptedSpeechType.AMBIGUOUS_DENIED -> {
+                "TÌNH HUỐNG: Người đối diện cho biết họ KHÔNG PHẢI là $pronoun $name (robot đã nhìn nhầm do góc camera). Hãy bẽn lẽn xin lỗi lịch sự do góc nhìn camera/ánh sáng và lễ phép hỏi xin tên thật của họ để tiện xưng hô."
+            }
+            ScriptedSpeechType.FAREWELL -> {
+                "TÌNH HUỐNG: $pronoun $name vừa rời khỏi tầm nhìn của robot. Hãy nói câu chào tạm biệt ngắn gọn, ấm áp, chúc ngày làm việc vui vẻ hoặc hẹn gặp lại."
+            }
+            ScriptedSpeechType.SILENCE_REMINDER -> {
+                "TÌNH HUỐNG: $pronoun $name đứng trước camera nhưng đang im lặng chưa nói gì. Hãy nhắc nhở nhẹ nhàng, đáng yêu rằng robot EVE vẫn đang chăm chú lắng nghe, $pronoun cần gì cứ nói."
+            }
+            ScriptedSpeechType.DISAMBIGUATION_QUESTION -> {
+                "TÌNH HUỐNG: Có người trùng tên $name. Hãy hỏi xem có phải là $pronoun $name mà robot từng gặp vào mốc thời gian $timeStr không."
+            }
+            ScriptedSpeechType.DISAMBIGUATION_CONFIRMED -> {
+                "TÌNH HUỐNG: Người dùng xác nhận đúng là $pronoun $name gặp $timeStr. Hãy vui vẻ mừng rỡ nhận ra người quen và thông báo đã nạp thêm góc mặt này."
+            }
+            ScriptedSpeechType.DISAMBIGUATION_NEW_PERSON -> {
+                "TÌNH HUỐNG: Người đối diện là một $pronoun $name hoàn toàn mới (khác người cùng tên trước đây). Hãy chào mừng vui tươi và thông báo đã tạo hồ sơ riêng cho $pronoun."
+            }
+            ScriptedSpeechType.DISAMBIGUATION_CLARIFY -> {
+                "TÌNH HUỐNG: Robot chưa nghe rõ câu trả lời xác nhận. Hãy lễ phép xin lỗi và hỏi lại xem có phải $pronoun $name gặp $timeStr không."
+            }
+            ScriptedSpeechType.IDENTITY_CONFLICT_QUESTION -> {
+                "TÌNH HUỐNG: Khuôn mặt nhìn rất giống $oldPronoun $oldName nhưng giọng nói lại xưng tên là $newName. Hãy hỏi tò mò hóm hỉnh xem có phải muốn cập nhật khuôn mặt này cho $newName không."
+            }
+            ScriptedSpeechType.IDENTITY_CONFLICT_CONFIRMED -> {
+                "TÌNH HUỐNG: Đã cập nhật chuyển khuôn mặt này sang cho $newPronoun $newName. Hãy thông báo vui vẻ hoàn tất."
+            }
+            ScriptedSpeechType.IDENTITY_CONFLICT_DENIED -> {
+                "TÌNH HUỐNG: Người dùng thừa nhận chỉ đang trêu đùa/thử tài robot chứ thật ra vẫn là $oldPronoun $oldName. Hãy cười đùa lém lỉnh bảo rằng mắt em tinh tường lắm không dễ bị lừa đâu."
+            }
+            ScriptedSpeechType.FACE_NOT_CLEAR -> {
+                "TÌNH HUỐNG: Camera chưa bắt rõ góc mặt của $pronoun. Hãy nhắc $pronoun ngẩng mặt lên hoặc nhìn thẳng vào ống kính một chút một cách dễ thương."
+            }
+            ScriptedSpeechType.FACE_NO_ONE -> {
+                "TÌNH HUỐNG: Trước camera hiện không có khuôn mặt nào. Hãy thông báo hài hước rằng trước mặt chưa có ai để cập nhật khuôn mặt."
+            }
+            ScriptedSpeechType.ADMIN_BRIEFING_SINGLE -> {
+                "TÌNH HUỐNG: Robot báo cáo 1 thông báo mới cho Admin ($pronoun $name). Nội dung: $content. Hãy báo cáo như thư ký chuyên nghiệp, tự nhiên, kết thúc lịch sự."
+            }
+            ScriptedSpeechType.PRONOUN_UPDATE -> {
+                "TÌNH HUỐNG: Người dùng yêu cầu đổi cách xưng hô sang $newPronoun. Hãy vui vẻ nhận lời và xác nhận từ nay sẽ xưng hô là $newPronoun."
+            }
+        }
+    }
+
+    fun getMultiVariantFallback(
+        type: ScriptedSpeechType,
+        person: PersonProfile?,
+        params: Map<String, String>
+    ): PolishedSpeech {
+        val name = person?.name ?: params["name"] ?: ""
+        val pronoun = person?.preferredPronoun ?: params["pronoun"] ?: (if (person?.gender == "male") "anh" else if (person?.gender == "female") "chị" else "mình")
+        val role = person?.role ?: params["role"] ?: ""
+        val timeOfDay = getTimeOfDayGreetingVi()
+        val timeStr = params["timeStr"] ?: "hôm trước"
+        val oldPronoun = params["oldPronoun"] ?: "anh"
+        val oldName = params["oldName"] ?: ""
+        val newName = params["newName"] ?: name
+        val newPronoun = params["newPronoun"] ?: pronoun
+        val content = params["content"] ?: ""
+        val gender = params["gender"] ?: person?.gender ?: "unknown"
+
+        val isAdmin = role.equals("admin", ignoreCase = true)
+
+        val options: List<Pair<String, String>> = when (type) {
+            ScriptedSpeechType.GREETING_KNOWN -> {
+                if (isAdmin) {
+                    listOf(
+                        "Dạ EVE kính chào sếp $name! Chúc sếp một ngày làm việc thật rực rỡ và hiệu quả ạ!" to "clap",
+                        "Dạ em chào sếp $name! Hôm nay sếp trông thật phong độ và nhiều năng lượng ạ!" to "happy",
+                        "Em chào sếp $name! Chúc sếp có thật nhiều niềm vui và thành công hôm nay nhé!" to "wave-right",
+                        "Dạ EVE chào sếp $name ạ! Sếp cần em hỗ trợ điều gì cứ dặn em nha!" to "speaking"
+                    )
+                } else {
+                    when (timeOfDay) {
+                        "buổi sáng" -> listOf(
+                            "Dạ em chào buổi sáng $pronoun $name! Chúc $pronoun một ngày mới ngập tràn năng lượng ạ!" to "wave-right",
+                            "Chào $pronoun $name tươi tắn nha! Hôm nay $pronoun cần EVE hỗ trợ gì không ạ?" to "happy",
+                            "A, em chào $pronoun $name! Thật vui khi được gặp lại $pronoun sáng nay ạ!" to "wave-right",
+                            "Dạ EVE chào $pronoun $name! Khởi đầu ngày mới thật thuận lợi và vui vẻ nhé $pronoun!" to "happy"
+                        )
+                        "buổi trưa" -> listOf(
+                            "Dạ em chào $pronoun $name! $pronoun đã chuẩn bị đi ăn trưa chưa ạ?" to "happy",
+                            "Chào $pronoun $name! Trưa nay làm việc có mệt không ạ, nhớ nghỉ ngơi xíu nha $pronoun!" to "curious",
+                            "Dạ em chào $pronoun $name ạ! Trưa nay $pronoun ghé qua có gì vui không kể em nghe với!" to "speaking"
+                        )
+                        "buổi chiều" -> listOf(
+                            "Dạ em chào $pronoun $name! Chúc $pronoun một buổi chiều làm việc thật năng suất nha!" to "happy",
+                            "Chào $pronoun $name ạ! EVE lại được gặp $pronoun rồi, vui quá đi mất!" to "wave-right",
+                            "Dạ em chào $pronoun $name! Chiều nay công việc thuận lợi chứ ạ?" to "curious",
+                            "Chào $pronoun $name! Chúc $pronoun chiều nay hoàn thành xuất sắc mọi kế hoạch nhé!" to "happy"
+                        )
+                        else -> listOf(
+                            "Dạ em chào $pronoun $name! Buổi tối ấm áp và thư giãn nhé $pronoun!" to "happy",
+                            "Chào $pronoun $name ạ! Giờ này mà $pronoun vẫn chăm chỉ thế ạ, nhớ giữ gìn sức khỏe nha!" to "curious",
+                            "Dạ em chào $pronoun $name! Rất vui được gặp lại $pronoun tối hôm nay ạ!" to "speaking"
+                        )
+                    }
+                }
+            }
+            ScriptedSpeechType.GREETING_STRANGER -> {
+                when (gender) {
+                    "male" -> listOf(
+                        "Dạ em chào anh ạ! Em là robot EVE, anh cho em xin phép được biết quý danh của mình nhé?" to "wave-right",
+                        "Chào anh trai phong độ! Rất vui được đón tiếp anh, anh tên là gì để em tiện làm quen ạ?" to "happy",
+                        "Dạ em chào anh! Lần đầu em được gặp anh ở đây, anh cho em xin tên để tiện xưng hô được không ạ?" to "curious",
+                        "A em chào anh ạ! Em là trợ lý EVE, mình có thể giới thiệu tên để chúng mình làm quen được không anh?" to "wave-right"
+                    )
+                    "female" -> listOf(
+                        "Dạ em chào chị ạ! Em là robot EVE, chị cho em xin phép được biết tên chị để tiện xưng hô nhé?" to "wave-right",
+                        "Chào chị gái xinh tươi! Rất vui được đón tiếp chị ghé thăm, chị tên là gì thế ạ?" to "happy",
+                        "Dạ em chào chị! Lần đầu em được gặp chị ở đây, chị cho em xin tên để chúng mình làm quen nha?" to "curious",
+                        "A em chào chị ạ! Em là trợ lý EVE, chị cho em xin tên để em lưu vào danh bạ bạn bè nhé!" to "wave-right"
+                    )
+                    else -> listOf(
+                        "Dạ em chào bạn ạ! Em là robot EVE, rất vui được gặp bạn, bạn cho em xin tên để chúng mình làm quen nhé!" to "wave-right",
+                        "Chào bạn nhé! Mình có thể giới thiệu tên để em tiện xưng hô được không ạ?" to "curious",
+                        "A chào bạn! Rất vui được đón tiếp bạn, cho em xin phép hỏi quý danh của mình với nha!" to "wave-right"
+                    )
+                }
+            }
+            ScriptedSpeechType.AMBIGUOUS_QUESTION -> {
+                listOf(
+                    "Dạ nhìn nét mặt với nụ cười quen quá, có phải là $pronoun $name không ạ hay em nhìn nhầm?" to "curious",
+                    "Ủa, em thấy nét mặt mình giống $pronoun $name quá nè, có phải $pronoun $name đấy không ạ?" to "curious",
+                    "Nhìn góc này em thấy quen lắm nha, trông như $pronoun $name vậy, đúng $pronoun không ạ?" to "thinking",
+                    "Dạ em ngờ ngợ nhìn rất giống $pronoun $name, có phải $pronoun $name ghé thăm em không ạ?" to "curious"
+                )
+            }
+            ScriptedSpeechType.AMBIGUOUS_CONFIRMED -> {
+                listOf(
+                    "Hihi đúng là $pronoun $name rồi! Em đã cập nhật ngay góc mặt mới này vào bộ nhớ rồi nhé!" to "happy",
+                    "Dạ em chào $pronoun $name! Em đã lưu thêm góc mặt siêu đẹp này của $pronoun rồi ạ!" to "happy",
+                    "Tuyệt vời, đúng là $pronoun $name! Em đã ghi nhớ thêm góc này để lần sau nhận diện siêu tốc hơn nha!" to "clap",
+                    "Hihi em nhận ra ngay mà! Góc mặt này em đã nạp vào danh bạ rồi nha $pronoun $name!" to "love"
+                )
+            }
+            ScriptedSpeechType.AMBIGUOUS_DENIED -> {
+                listOf(
+                    "Dạ em xin lỗi ạ! Chắc tại góc camera với ánh sáng làm em nhìn nhầm, mình cho em xin tên để em làm quen nhé!" to "shy",
+                    "Úi em ngượng quá, nhìn nhầm mất rồi! Cho em xin phép hỏi tên mình để tiện xưng hô được không ạ?" to "shy",
+                    "Dạ em xin lỗi mình nhé! Camera góc này hơi lóa nên em nhận nhầm, bạn tên là gì để em ghi nhớ nha?" to "shy",
+                    "Hihi mắt em hôm nay hơi quáng gà xíu, cho em xin tên thật của mình để em lưu hồ sơ mới nhé!" to "shy"
+                )
+            }
+            ScriptedSpeechType.FAREWELL -> {
+                if (isAdmin) {
+                    listOf(
+                        "Tạm biệt sếp $name nhé, chúc sếp có những quyết định thật sáng suốt và ngày làm việc thành công rực rỡ!" to "wave-right",
+                        "Dạ em chào sếp $name, hẹn gặp lại sếp ạ! Sếp giữ gìn sức khỏe nha!" to "wave-left",
+                        "Bye bye sếp $name! Khi nào sếp cần EVE cứ gọi em liền nhé!" to "happy"
+                    )
+                } else {
+                    listOf(
+                        "Tạm biệt $pronoun $name nhé, chúc $pronoun làm việc thật hiệu quả và ngập tràn niềm vui!" to "wave-right",
+                        "Hẹn sớm gặp lại $pronoun $name nha, có gì cần cứ ghé qua gọi EVE nhé!" to "wave-left",
+                        "Dạ tạm biệt $pronoun $name! Chúc $pronoun một ngày thật tuyệt vời ạ!" to "happy",
+                        "Bye bye $pronoun $name! Hẹn gặp lại $pronoun sớm nha!" to "wave-right"
+                    )
+                }
+            }
+            ScriptedSpeechType.SILENCE_REMINDER -> {
+                listOf(
+                    "Dạ $pronoun ơi, em vẫn đang lắng nghe đây ạ, $pronoun cần em giúp gì cứ nói nha!" to "curious",
+                    "$pronoun cứ nói đi ạ, hai tai EVE đang vểnh lên sẵn sàng hỗ trợ rồi nè!" to "happy",
+                    "Em đang nghe đây $pronoun ơi, có điều gì muốn chia sẻ hay tra cứu không ạ?" to "speaking",
+                    "Dạ em vẫn ở đây đợi $pronoun nè, $pronoun muốn dặn dò em điều gì không ạ?" to "curious"
+                )
+            }
+            ScriptedSpeechType.DISAMBIGUATION_QUESTION -> {
+                listOf(
+                    "Dạ, có phải là $pronoun $name em từng gặp $timeStr không ạ?" to "thinking",
+                    "Ủa, $pronoun có phải là $pronoun $name đợt em gặp $timeStr không ạ?" to "curious",
+                    "Cho em xác nhận xíu, mình có đúng là $pronoun $name lần trước em gặp $timeStr không ạ?" to "thinking"
+                )
+            }
+            ScriptedSpeechType.DISAMBIGUATION_CONFIRMED -> {
+                listOf(
+                    "Dạ em nhận ra $pronoun rồi! Em đã nạp thêm góc mặt này vào hồ sơ của $pronoun nha!" to "happy",
+                    "A đúng là $pronoun $name rồi! Em đã lưu góc mặt mới này để lần sau nhận ra $pronoun ngay lập tức!" to "clap",
+                    "Hihi chuẩn luôn rồi, rất vui được gặp lại $pronoun $name nhé!" to "happy"
+                )
+            }
+            ScriptedSpeechType.DISAMBIGUATION_NEW_PERSON -> {
+                listOf(
+                    "A hóa ra là một $pronoun $name mới! Rất vui được gặp $pronoun, em đã tạo hồ sơ riêng cho $pronoun rồi ạ!" to "happy",
+                    "Ồ, thêm một $pronoun $name siêu dễ thương nữa nè! Em đã tạo hồ sơ mới và ghi nhớ khuôn mặt $pronoun rồi ạ!" to "clap",
+                    "Dạ tuyệt quá, công ty mình lại có thêm một $pronoun $name nữa! Em đã lưu lại khuôn mặt của $pronoun rồi nha!" to "wave-right"
+                )
+            }
+            ScriptedSpeechType.DISAMBIGUATION_CLARIFY -> {
+                listOf(
+                    "Dạ em chưa nghe rõ lắm ạ, có phải là $pronoun $name em gặp $timeStr không ạ?" to "thinking",
+                    "Tiếng hơi nhỏ em chưa bắt kịp, có đúng là $pronoun $name lần trước $timeStr không ạ?" to "curious"
+                )
+            }
+            ScriptedSpeechType.IDENTITY_CONFLICT_QUESTION -> {
+                listOf(
+                    "Ủa, em nhìn khuôn mặt này rất giống $oldPronoun $oldName mà sao lại xưng là $newName ạ? Muốn em cập nhật lại khuôn mặt này cho $newName sao ạ?" to "curious",
+                    "Ơ kìa, camera thấy rõ ràng là $oldPronoun $oldName mà lại bảo là $newName, $oldPronoun có muốn em đổi khuôn mặt này cho $newName thật không?" to "curious"
+                )
+            }
+            ScriptedSpeechType.IDENTITY_CONFLICT_CONFIRMED -> {
+                listOf(
+                    "Dạ em đã cập nhật lại khuôn mặt này cho $pronoun $newName rồi ạ!" to "happy",
+                    "Xong rồi ạ! Khuôn mặt này từ nay thuộc về hồ sơ của $pronoun $newName nhé!" to "clap"
+                )
+            }
+            ScriptedSpeechType.IDENTITY_CONFLICT_DENIED -> {
+                listOf(
+                    "Haha em biết ngay mà, em nhận diện tinh mắt lắm không dễ bị lừa đâu nha $oldPronoun $oldName!" to "happy",
+                    "Hihi em đâu có dễ bị lừa thế đâu, nhận ra $oldPronoun $oldName trong một nốt nhạc luôn á!" to "love"
+                )
+            }
+            ScriptedSpeechType.FACE_NOT_CLEAR -> {
+                listOf(
+                    "Dạ em chưa nhìn rõ mặt của $pronoun ạ, $pronoun nhìn thẳng vào camera một chút nhé!" to "thinking",
+                    "Góc này hơi khuất mặt rồi $pronoun ơi, $pronoun ngẩng mặt lên nhìn camera giúp em xíu nha!" to "curious"
+                )
+            }
+            ScriptedSpeechType.FACE_NO_ONE -> {
+                listOf(
+                    "Dạ em chưa thấy ai đứng trước camera để cập nhật khuôn mặt ạ!" to "thinking",
+                    "Trước camera đang trống trơn nè $pronoun ơi, mình đứng trước ống kính giúp em nhé!" to "shrug"
+                )
+            }
+            ScriptedSpeechType.ADMIN_BRIEFING_SINGLE -> {
+                listOf(
+                    "Dạ em chào $pronoun $name! $pronoun có một thông báo mới: $content. Em xin hết ạ!" to "speaking",
+                    "Báo cáo $pronoun $name, vừa có một thông báo mới gửi tới $pronoun: $content. Hết ạ!" to "speaking",
+                    "Dạ thưa $pronoun $name, em xin thông báo có tin mới: $content ạ!" to "speaking"
+                )
+            }
+            ScriptedSpeechType.PRONOUN_UPDATE -> {
+                listOf(
+                    "Dạ vâng, từ nay em sẽ xưng hô với $newPronoun $name là $newPronoun nhé!" to "happy",
+                    "Em đã ghi nhận rồi ạ, từ giờ em sẽ gọi là $newPronoun $name cho thân thiết nha!" to "happy"
+                )
+            }
+        }
+
+        val choice = options[Random.nextInt(options.size)]
+        return PolishedSpeech(choice.first, choice.second)
+    }
+
+    suspend fun polishSpeech(
+        type: ScriptedSpeechType,
+        person: PersonProfile? = null,
+        params: Map<String, String> = emptyMap(),
+        dbHelper: EveDatabaseHelper
+    ): PolishedSpeech = withContext(Dispatchers.IO) {
+        val fallback = getMultiVariantFallback(type, person, params)
+
+        val apiKey = dbHelper.getAiApiKey()
+        val model = dbHelper.getAiModel()
+        val baseUrl = dbHelper.getAiBaseUrl()
+
+        if (apiKey.isBlank() || baseUrl.isBlank()) {
+            return@withContext fallback
+        }
+
+        try {
+            val userPrompt = buildSpeechPolisherPrompt(type, person, params)
+            val messages = JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "system")
+                    put("content", "Bạn là trợ lý robot EVE của công ty INOVA. Nhiệm vụ: Hãy nói 1 câu tiếng Việt tự nhiên, ấm áp, sinh động, hóm hỉnh theo đúng tình huống được giao (tối đa 1-2 câu ngắn gọn, dưới 30 từ để đọc qua Text-to-Speech). TUYỆT ĐỐI KHÔNG lặp lại khuôn sáo. Chỉ trả về DUY NHẤT 1 JSON theo cấu trúc: {\"text\": \"<câu nói ngắn gọn>\", \"emotion\": \"speaking|happy|curious|shy|wave-right|wave-left|thinking|love|clap|shrug\"}.")
+                })
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", userPrompt)
+                })
+            }
+
+            val payload = JSONObject().apply {
+                put("model", model)
+                put("messages", messages)
+                put("temperature", 0.75)
+                put("max_tokens", 80)
+            }
+
+            val request = Request.Builder()
+                .url(baseUrl)
+                .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .addHeader("Authorization", "Bearer $apiKey")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("HTTP-Referer", "https://eve-ai.local")
+                .addHeader("X-Title", "EVE Speech Polisher")
+                .build()
+
+            val response = fastClient.newCall(request).execute()
+            val bodyString = response.body?.string() ?: ""
+
+            if (!response.isSuccessful || bodyString.isBlank()) {
+                return@withContext fallback
+            }
+
+            val rootJson = JSONObject(bodyString)
+            val choices = rootJson.optJSONArray("choices")
+            if (choices != null && choices.length() > 0) {
+                val messageObj = choices.getJSONObject(0).optJSONObject("message")
+                val content = messageObj?.optString("content")?.trim() ?: ""
+                val clean = content.substringAfter("{").substringBeforeLast("}")
+                val obj = JSONObject("{$clean}")
+                val text = obj.optString("text", "").trim()
+                val emotion = obj.optString("emotion", "speaking").trim()
+                if (text.isNotBlank()) {
+                    return@withContext PolishedSpeech(cleanMarkdownForTts(text), emotion)
+                }
+            }
+            fallback
+        } catch (e: Exception) {
+            Log.d(TAG, "Fast LLM polishSpeech fallback triggered: ${e.message}")
+            fallback
         }
     }
 }

@@ -57,4 +57,27 @@ class LocalAiAgentGestureTest {
         assertEquals("shy", LocalAiAgentService.resolveEffectiveEmotion("shy", null, "hôm nay xinh thế", "admin"))
         assertEquals("happy", LocalAiAgentService.resolveEffectiveEmotion("happy", null, "chào em", "friend"))
     }
+
+    @Test
+    fun testStrangerNewPersonNameExtractionFallback() {
+        // Verify Vietnamese introduction phrases extract correct names and pronouns
+        val p1 = com.example.facedetector.network.N8nService.extractNameFromMessage("Chào em, anh là Tuấn")
+        org.junit.Assert.assertNotNull(p1)
+        assertEquals("Tuấn", p1!!.name)
+        assertEquals("Anh", p1.preferredPronoun)
+
+        val p2 = com.example.facedetector.network.N8nService.extractNameFromMessage("Chị tên là Hoàng Mai ạ")
+        org.junit.Assert.assertNotNull(p2)
+        assertEquals("Hoàng Mai", p2!!.name)
+        assertEquals("Chị", p2.preferredPronoun)
+
+        val p3 = com.example.facedetector.network.N8nService.extractNameFromMessage("Cứ gọi tôi là chú Ba")
+        org.junit.Assert.assertNotNull(p3)
+        assertEquals("Ba", p3!!.name)
+        assertEquals("Chú", p3.preferredPronoun)
+
+        val p4 = com.example.facedetector.network.N8nService.extractNameFromMessage("Mình là Linh nhé")
+        org.junit.Assert.assertNotNull(p4)
+        assertEquals("Linh", p4!!.name)
+    }
 }
