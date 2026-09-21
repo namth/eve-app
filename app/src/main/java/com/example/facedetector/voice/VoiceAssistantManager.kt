@@ -45,8 +45,8 @@ class VoiceAssistantManager(
     // Only auto-listen if user is actively present in front of EVE
     var isUserPresent: Boolean = false
 
-    // Real-Time Adaptive VAD State (Chính xác 800ms ngắt sau khi dứt câu)
-    private var hasUserStartedSpeaking: Boolean = false
+    var hasUserStartedSpeaking: Boolean = false
+        private set
     private var consecutiveSpeechFrames: Int = 0
     private var smoothedRms: Float = 0f
     private var startListeningTime: Long = 0L

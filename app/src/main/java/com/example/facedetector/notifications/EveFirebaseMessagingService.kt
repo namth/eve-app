@@ -23,6 +23,8 @@ class EveFirebaseMessagingService : FirebaseMessagingService() {
         const val CHANNEL_ID = "eve_notifications_channel"
         const val CHANNEL_NAME = "EVE AI Assistant"
         const val EXTRA_FROM_NOTIFICATION = "extra_from_notification"
+
+        var onNotificationReceivedListener: ((com.example.facedetector.data.NotificationItem) -> Unit)? = null
     }
 
     override fun onNewToken(token: String) {
@@ -59,6 +61,15 @@ class EveFirebaseMessagingService : FirebaseMessagingService() {
         val finalBody = body ?: "Bạn có một thông báo mới từ hệ thống."
         val messageId = remoteMessage.messageId ?: "fcm_${System.currentTimeMillis()}"
 
+        val notifItem = com.example.facedetector.data.NotificationItem(
+            id = messageId,
+            title = finalTitle,
+            body = finalBody,
+            data = dataJson,
+            isRead = false,
+            receivedAt = System.currentTimeMillis()
+        )
+
         // 2. Lưu thông báo vào SQLite (status: is_read = 0)
         try {
             val dbHelper = EveDatabaseHelper(this)
@@ -70,6 +81,9 @@ class EveFirebaseMessagingService : FirebaseMessagingService() {
             )
             dbHelper.close()
             Log.d(TAG, "Saved notification to SQLite: ID=$messageId, title=$finalTitle")
+
+            // Bắn callback báo cho MainActivity ngay lập tức nếu app đang mở
+            onNotificationReceivedListener?.invoke(notifItem)
         } catch (e: Exception) {
             Log.e(TAG, "Error saving notification to DB: ${e.message}", e)
         }

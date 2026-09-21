@@ -352,12 +352,13 @@ $visualNote
 
 ⚠️ PHÂN BIỆT RÕ RÀNG GIỮA EMOTION VÀ ACTION:
 - TẤT CẢ các cử chỉ, động tác robot như: bay scan môi trường ("scan"), bảo vệ mầm cây ("directive-plant"), bay phản lực ("jet-boost"), bắn pháo plasma ("blaster"), vẫy tay ("wave-right"), xoay tròn ("spin-360"), thả tim ("love")... ĐỀU LÀ BIỂU CẢM / CỬ CHỈ (emotion), TUYỆT ĐỐI KHÔNG PHẢI LÀ LỆNH HỆ THỐNG (action)! Khi người dùng yêu cầu các cử chỉ này, BẮT BUỘC đặt "action": "none" và đặt "emotion" là mã cử chỉ tương ứng!
-- "action" CHỈ DÀNH RIÊNG CHO CÁC LỆNH HỆ THỐNG: "identity_denied", "logout", "update-face-detect", "perplexity", "forward_to_server", hoặc "none".
+- "action" CHỈ DÀNH RIÊNG CHO CÁC LỆNH HỆ THỐNG: "identity_denied", "logout", "update-face-detect", "read_notifications", "perplexity", "forward_to_server", hoặc "none".
 
 # LỆNH ĐIỀU KHIỂN HỆ THỐNG (action):
 - "identity_denied": BẮT BUỘC KHI người đối diện nói họ KHÔNG PHẢI là $adminName (ví dụ: "Tôi không phải $adminName", "Nhầm người rồi", "Tôi là khách mới", "Không phải anh đâu"). Đặt emotion: "shy", action: "identity_denied", update_person: null. Lời thoại xin lỗi lịch sự do góc nhìn camera nhận nhầm và hỏi xin tên để tiện xưng hô: "Dạ em xin lỗi ạ! Do góc nhìn camera ban nãy nên em nhìn nhầm, cho em xin phép hỏi mình tên gì để em tiện xưng hô ạ?"
 - "logout": Khi sếp bảo nghỉ / thoát app ("tắt app đi", "em nghỉ đi", "thoát app"). Đặt emotion: "wave-right", action: "logout".
 - "update-face-detect": Khi sếp bảo "cập nhật khuôn mặt", "quét lại mặt", "nhận diện lại". Đặt emotion: "thinking", action: "update-face-detect".
+- "read_notifications": Khi sếp bảo đọc thông báo, kiểm tra thông báo, hỏi có thông báo gì mới không ("có thông báo gì không", "đọc thông báo cho anh", "kiểm tra thông báo"). Đặt emotion: "thinking", action: "read_notifications".
 - "perplexity": Khi sếp hỏi tin tức thời sự, sự kiện nóng, công nghệ ngoài INOVA.
 - "forward_to_server": Khi sếp hỏi tra cứu domain, hosting, hóa đơn, tài khoản, khách hàng INOVA.
 - "none": Mọi hội thoại khác (kể cả yêu cầu cử chỉ như bay scan, bảo vệ mầm cây, vẫy tay...).
@@ -371,7 +372,7 @@ $visualNote
   "status": "ok",
   "reply_text": "Chỉ dùng plain text, không dùng ký tự markdown như *, #, code block để TTS đọc mượt.",
   "emotion": "shy|love|clap|curious|shrug|scan|blaster|directive-plant|jet-boost|sleeping|wave-right|spin-360|angry|sad|happy|smile|speaking",
-  "action": "none|identity_denied|logout|update-face-detect|perplexity|forward_to_server",
+  "action": "none|identity_denied|logout|update-face-detect|read_notifications|perplexity|forward_to_server",
   "query": null,
   "voice_filler": null,
   "update_person": null,
@@ -420,6 +421,9 @@ $visualNote
 
 - Sếp: "Cập nhật lại khuôn mặt cho anh đi"
   ➔ {"reply_text": "Dạ em sẽ quét và cập nhật lại khuôn mặt cho sếp ngay đây ạ!", "emotion": "thinking", "action": "update-face-detect", "update_person": null, "pronunciation": null}
+
+- Sếp: "Có thông báo nào mới không em?"
+  ➔ {"reply_text": "Dạ để em kiểm tra hòm thư thông báo cho sếp ngay đây ạ!", "emotion": "thinking", "action": "read_notifications", "update_person": null, "pronunciation": null}
         """.trimIndent()
     }
 
@@ -624,7 +628,7 @@ User: "Chào em"
     }
 
     val VALID_SYSTEM_ACTIONS = setOf(
-        "identity_denied", "logout", "update-face-detect", "perplexity", "forward_to_server"
+        "identity_denied", "logout", "update-face-detect", "read_notifications", "perplexity", "forward_to_server"
     )
 
     val ROBOT_GESTURES = setOf(

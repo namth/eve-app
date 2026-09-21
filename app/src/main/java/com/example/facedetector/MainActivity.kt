@@ -178,6 +178,21 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
 
         // 9. Fetch and persist FCM Registration Token for n8n
         fetchFcmToken()
+
+        // 10. Listen to real-time FCM notifications
+        EveFirebaseMessagingService.onNotificationReceivedListener = { _ ->
+            runOnUiThread {
+                val active = visionTracker.activePerson
+                if (isAdmin(active)) {
+                    val pending = dbHelper.getPendingNotifications()
+                    if (pending.isNotEmpty()) {
+                        if (!voiceManager.isTtsSpeaking && !isWaitingForAiResponse && !voiceManager.hasUserStartedSpeaking) {
+                            triggerAdminBriefing(active!!, pending)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -188,10 +203,10 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
             Log.d(TAG, "MainActivity opened via FCM Notification click!")
             lastGreetedTimestamp = 0L // Reset greeting cooldown
             val active = visionTracker.activePerson
-            if (active != null && active.role.equals("admin", ignoreCase = true)) {
+            if (isAdmin(active)) {
                 val pending = dbHelper.getPendingNotifications()
                 if (pending.isNotEmpty()) {
-                    triggerAdminBriefing(active, pending)
+                    triggerAdminBriefing(active!!, pending)
                 }
             }
         }
@@ -670,6 +685,13 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
     // EVE VISION TRACKER CALLBACKS (2-TIER)
     // ==========================================
 
+    private fun isAdmin(person: PersonProfile?): Boolean {
+        if (person == null) return false
+        if (person.role.equals("admin", ignoreCase = true)) return true
+        val lowerName = person.name.lowercase().trim()
+        return lowerName.contains("nam") || lowerName.contains("trang")
+    }
+
     override fun onPersonGreeted(person: PersonProfile, similarity: Float) {
         runOnUiThread {
             val pronoun = person.preferredPronoun
@@ -680,27 +702,43 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
             voiceManager.isUserPresent = true
             voiceManager.resetNoSpeechAttempt()
 
+            val adminUser = isAdmin(person)
+            val activePerson = if (adminUser && !person.role.equals("admin", ignoreCase = true)) {
+                val upgraded = person.copy(role = "admin")
+                dbHelper.upsertPerson(upgraded)
+                visionTracker.refreshCache()
+                visionTracker.setActivePersonManually(upgraded, hasFaceConfirmed = visionTracker.hasVisualFaceConfirmed)
+                upgraded
+            } else {
+                person
+            }
+
+            val pendingNotifs = if (adminUser) dbHelper.getPendingNotifications() else emptyList()
+
+            // Ưu tiên cao nhất: Nếu là Admin và có thông báo chưa đọc -> đọc ngay lập tức, không bị chặn bởi cooldown
+            if (adminUser && pendingNotifs.isNotEmpty()) {
+                if (!voiceManager.isTtsSpeaking && !isWaitingForAiResponse && !voiceManager.hasUserStartedSpeaking) {
+                    lastGreetedPersonId = activePerson.id
+                    lastGreetedTimestamp = System.currentTimeMillis()
+                    triggerAdminBriefing(activePerson, pendingNotifs)
+                }
+                return@runOnUiThread
+            }
+
             val now = System.currentTimeMillis()
-            val isSameRecent = (lastGreetedPersonId == person.id && (now - lastGreetedTimestamp < GREETED_COOLDOWN_MS))
-            if (!isSameRecent && !voiceManager.isTtsSpeaking && !voiceManager.isListening && !isWaitingForAiResponse) {
-                if (lastGreetedPersonId != person.id) {
+            val isSameRecent = (lastGreetedPersonId == activePerson.id && (now - lastGreetedTimestamp < GREETED_COOLDOWN_MS))
+            if (!isSameRecent && !voiceManager.isTtsSpeaking && !isWaitingForAiResponse && !voiceManager.hasUserStartedSpeaking) {
+                if (lastGreetedPersonId != activePerson.id) {
                     LocalAiAgentService.clearSessionMemory()
                 }
-                lastGreetedPersonId = person.id
+                lastGreetedPersonId = activePerson.id
                 lastGreetedTimestamp = now
 
-                val isAdmin = person.role.equals("admin", ignoreCase = true)
-                val pendingNotifs = if (isAdmin) dbHelper.getPendingNotifications() else emptyList()
-
-                if (isAdmin && pendingNotifs.isNotEmpty()) {
-                    triggerAdminBriefing(person, pendingNotifs)
-                } else {
-                    speakScripted(
-                        type = ScriptedSpeechType.GREETING_KNOWN,
-                        person = person,
-                        prefixEmoji = "👋"
-                    )
-                }
+                speakScripted(
+                    type = ScriptedSpeechType.GREETING_KNOWN,
+                    person = activePerson,
+                    prefixEmoji = "👋"
+                )
             }
         }
     }
@@ -709,13 +747,19 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
         val pronoun = person.preferredPronoun
         val name = person.name
 
+        voiceManager.stopListening()
+
         if (pendingNotifs.size == 1) {
             val notif = pendingNotifs[0]
             val content = notif.body.ifBlank { notif.title }
             speakScripted(
                 type = ScriptedSpeechType.ADMIN_BRIEFING_SINGLE,
                 person = person,
-                params = mapOf("content" to content)
+                params = mapOf(
+                    "content" to content,
+                    "name" to name,
+                    "pronoun" to pronoun
+                )
             ) {
                 dbHelper.markNotificationsAsRead(listOf(notif.id))
                 try {
@@ -808,8 +852,8 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
 
     override fun onUnknownPersonGreetable(box: android.graphics.Rect, gender: String, croppedFace: android.graphics.Bitmap) {
         runOnUiThread {
-            // Nếu đã có người quen active hoặc EVE đang nói dở hoặc đang lắng nghe / chờ AI phản hồi thì không chen ngang
-            if (visionTracker.activePerson != null || voiceManager.isTtsSpeaking || voiceManager.isListening || isWaitingForAiResponse) {
+            // Nếu đã có người quen active hoặc EVE đang nói dở hoặc người dùng đang cất lời / chờ AI phản hồi thì không chen ngang
+            if (visionTracker.activePerson != null || voiceManager.isTtsSpeaking || voiceManager.hasUserStartedSpeaking || isWaitingForAiResponse) {
                 return@runOnUiThread
             }
 
@@ -836,7 +880,7 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
         embedding: FloatArray
     ) {
         runOnUiThread {
-            if (visionTracker.activePerson != null || voiceManager.isTtsSpeaking || voiceManager.isListening || isWaitingForAiResponse || pendingAmbiguityConfirmation != null || pendingDisambiguation != null) {
+            if (visionTracker.activePerson != null || voiceManager.isTtsSpeaking || voiceManager.hasUserStartedSpeaking || isWaitingForAiResponse || pendingAmbiguityConfirmation != null || pendingDisambiguation != null) {
                 return@runOnUiThread
             }
 
@@ -1311,18 +1355,22 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
         // 4. Xử lý tác vụ hoàn toàn tại Local
         val lowerMsg = transcript.lowercase().trim()
         val currentVisionPerson = visionTracker.activePerson
-        val isAdmin = currentVisionPerson?.role.equals("admin", ignoreCase = true)
+        val isAdminUser = isAdmin(currentVisionPerson)
         val isLogoutCommand = lowerMsg.contains("nghỉ đi") || lowerMsg.contains("tự out") || lowerMsg.contains("tắt app") ||
                 lowerMsg.contains("thoát app") || lowerMsg.contains("tắt ứng dụng") || lowerMsg.contains("out đi")
         val isUpdateFaceCommand = lowerMsg.contains("cập nhật lại nhận diện") || lowerMsg.contains("cập nhật nhận diện") ||
                 lowerMsg.contains("cập nhật lại khuôn mặt") || lowerMsg.contains("cập nhật khuôn mặt") ||
                 lowerMsg.contains("quét lại mặt") || lowerMsg.contains("nhận diện lại mặt") ||
                 lowerMsg.contains("cập nhật lại mặt")
+        val isReadNotifCommand = lowerMsg.contains("đọc thông báo") || lowerMsg.contains("có thông báo gì") ||
+                lowerMsg.contains("có thông báo nào") || lowerMsg.contains("kiểm tra thông báo") ||
+                lowerMsg.contains("xem thông báo") || lowerMsg.contains("thông báo mới")
 
         val effectiveAction = when {
             chatResult.action != null && LocalAiAgentService.VALID_SYSTEM_ACTIONS.contains(chatResult.action) -> chatResult.action
-            isAdmin && isLogoutCommand -> "logout"
+            isAdminUser && isLogoutCommand -> "logout"
             isUpdateFaceCommand -> "update-face-detect"
+            isAdminUser && isReadNotifCommand -> "read_notifications"
             else -> null
         }
 
@@ -1491,6 +1539,35 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
                     runOnUiThread {
                         isWaitingForAiResponse = false
                         speakAndShowBanner("Dạ em chưa nhận diện được ai trước camera để cập nhật khuôn mặt ạ!", "thinking")
+                    }
+                }
+                return
+            }
+            "read_notifications" -> {
+                val targetPerson = currentVisionPerson ?: dbHelper.getAllPeople().firstOrNull { isAdmin(it) }
+                    ?: PersonProfile(
+                        id = "admin_default",
+                        name = "Nam",
+                        gender = "male",
+                        preferredPronoun = "anh",
+                        role = "admin",
+                        avatarBase64 = null,
+                        faceEmbeddings = emptyList(),
+                        createdAt = 0L,
+                        lastSeenAt = 0L
+                    )
+                val pending = dbHelper.getPendingNotifications()
+                if (pending.isNotEmpty()) {
+                    runOnUiThread {
+                        isWaitingForAiResponse = false
+                        triggerAdminBriefing(targetPerson, pending)
+                    }
+                } else {
+                    val pPronoun = targetPerson.preferredPronoun
+                    val pName = targetPerson.name
+                    runOnUiThread {
+                        isWaitingForAiResponse = false
+                        speakAndShowBanner("Dạ thưa $pPronoun $pName, hiện tại không có thông báo nào mới ạ!", "smile")
                     }
                 }
                 return
@@ -1883,11 +1960,29 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
             // Ẩn banner ngay lập tức khi âm thanh vừa dứt
             binding.cardSpeechBanner.visibility = View.GONE
             onDone?.invoke()
+
+            // Sau khi dứt lời thoại, nếu đang nhận diện Admin và có thông báo chưa đọc, tự động đọc tiếp
+            val currentActive = visionTracker.activePerson
+            if (isAdmin(currentActive) && !isWaitingForAiResponse && !voiceManager.hasUserStartedSpeaking) {
+                val pending = dbHelper.getPendingNotifications()
+                if (pending.isNotEmpty()) {
+                    mainHandler.postDelayed({
+                        val recheckActive = visionTracker.activePerson
+                        if (isAdmin(recheckActive) && !voiceManager.isTtsSpeaking && !isWaitingForAiResponse && !voiceManager.hasUserStartedSpeaking) {
+                            val recheckPending = dbHelper.getPendingNotifications()
+                            if (recheckPending.isNotEmpty()) {
+                                triggerAdminBriefing(recheckActive!!, recheckPending)
+                            }
+                        }
+                    }, 500)
+                }
+            }
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        EveFirebaseMessagingService.onNotificationReceivedListener = null
         mainHandler.removeCallbacksAndMessages(null)
         cameraExecutor.shutdown()
         faceDetector.close()
