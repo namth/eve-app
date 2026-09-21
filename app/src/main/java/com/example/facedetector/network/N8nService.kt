@@ -274,16 +274,19 @@ object N8nService {
         if (lower.contains("tò mò") || lower.contains("nghiêng đầu")) {
             return N8nChatResponse("Ủa, có chuyện gì thú vị vậy $pronoun?", "curious")
         }
-        if (lower.contains("quét laser") || lower.contains("quét môi trường") || lower.contains("quét xung quanh") || lower.contains("quét phòng")) {
-            return N8nChatResponse("Dạ em đang kích hoạt cảm biến quét môi trường đây ạ!", "scan")
+        if (lower.contains("bay scan") || lower.contains("scan môi trường") || lower.contains("quét môi trường") ||
+            lower.contains("quét laser") || lower.contains("quét xung quanh") || lower.contains("quét phòng") ||
+            lower.contains("scan") || lower.contains("quét") || (lower.contains("bay") && (lower.contains("quét") || lower.contains("môi trường")))) {
+            return N8nChatResponse("Dạ em đang bay lên kích hoạt cảm biến quét kiểm tra môi trường đây ạ!", "scan")
         }
-        if (lower.contains("mầm cây") || lower.contains("cây sự sống") || lower.contains("directive plant")) {
-            return N8nChatResponse("Dạ em đã định vị được mầm cây sự sống rồi ạ!", "directive-plant")
+        if (lower.contains("mầm cây") || lower.contains("cây sự sống") || lower.contains("directive plant") ||
+            lower.contains("bảo vệ mầm cây") || lower.contains("gieo mầm") || lower.contains("bảo vệ môi trường") || lower.contains("cây xanh")) {
+            return N8nChatResponse("Dạ em đã định vị và kích hoạt chế độ bảo vệ mầm cây sự sống rồi ạ!", "directive-plant")
         }
-        if (lower.contains("pháo plasma") || lower.contains("bắn pháo") || lower.contains("sẵn sàng chiến đấu") || lower.contains("tác chiến")) {
+        if (lower.contains("pháo plasma") || lower.contains("bắn pháo") || lower.contains("sẵn sàng chiến đấu") || lower.contains("tác chiến") || lower.contains("bắn súng")) {
             return N8nChatResponse("Pháo Plasma đã sẵn sàng tác chiến!", "blaster")
         }
-        if (lower.contains("bay lượn") || lower.contains("bay phản lực") || lower.contains("siêu thanh") || lower.contains("jet boost")) {
+        if (lower.contains("bay lượn") || lower.contains("bay phản lực") || lower.contains("siêu thanh") || lower.contains("jet boost") || lower.contains("bay lên")) {
             return N8nChatResponse("Kích hoạt chế độ bay phản lực siêu thanh!", "jet-boost")
         }
         if (lower.contains("ngại ngùng") || lower.contains("xấu hổ") || lower.contains("đỏ mặt")) {

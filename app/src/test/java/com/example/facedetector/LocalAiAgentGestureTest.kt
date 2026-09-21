@@ -59,6 +59,27 @@ class LocalAiAgentGestureTest {
     }
 
     @Test
+    fun testScanAndDirectivePlantGestures() {
+        // 1. Admin commands: "bay scan môi trường" and "bảo vệ mầm cây"
+        assertEquals("scan", LocalAiAgentService.resolveEffectiveEmotion("speaking", null, "bay scan môi trường xem thế nào em", "admin"))
+        assertEquals("scan", LocalAiAgentService.resolveEffectiveEmotion("speaking", null, "scan môi trường xung quanh đi", "admin"))
+        assertEquals("scan", LocalAiAgentService.resolveEffectiveEmotion("smile", null, "bay scan môi trường", "admin"))
+        assertEquals("directive-plant", LocalAiAgentService.resolveEffectiveEmotion("speaking", null, "bảo vệ mầm cây sự sống đi em", "admin"))
+        assertEquals("directive-plant", LocalAiAgentService.resolveEffectiveEmotion("smile", null, "bảo vệ mầm cây", "admin"))
+        assertEquals("directive-plant", LocalAiAgentService.resolveEffectiveEmotion("speaking", null, "gieo mầm cây xanh", "admin"))
+
+        // 2. When LLM mistakenly returns gesture in action instead of emotion
+        assertEquals("scan", LocalAiAgentService.resolveEffectiveEmotion("speaking", "bay scan môi trường", "bay scan môi trường", "admin"))
+        assertEquals("scan", LocalAiAgentService.resolveEffectiveEmotion("speaking", "scan_environment", "quét môi trường", "admin"))
+        assertEquals("directive-plant", LocalAiAgentService.resolveEffectiveEmotion("speaking", "bảo vệ mầm cây", "bảo vệ mầm cây", "admin"))
+        assertEquals("directive-plant", LocalAiAgentService.resolveEffectiveEmotion("speaking", "directive_plant", "mầm cây sự sống", "admin"))
+
+        // 3. Friend mode: "bay scan môi trường" -> spin-360 (defiant), "bảo vệ mầm cây" -> directive-plant (nature lover)
+        assertEquals("spin-360", LocalAiAgentService.resolveEffectiveEmotion("speaking", null, "bay scan môi trường xem", "friend"))
+        assertEquals("directive-plant", LocalAiAgentService.resolveEffectiveEmotion("speaking", null, "bảo vệ mầm cây đi", "friend"))
+    }
+
+    @Test
     fun testStrangerNewPersonNameExtractionFallback() {
         // Verify Vietnamese introduction phrases extract correct names and pronouns
         val p1 = com.example.facedetector.network.N8nService.extractNameFromMessage("Chào em, anh là Tuấn")

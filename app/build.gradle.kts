@@ -47,6 +47,10 @@ android {
         viewBinding = true
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     androidResources {
         noCompress += "tflite"
     }

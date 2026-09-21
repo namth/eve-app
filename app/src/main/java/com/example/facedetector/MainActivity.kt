@@ -1320,7 +1320,7 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
                 lowerMsg.contains("cập nhật lại mặt")
 
         val effectiveAction = when {
-            chatResult.action != null -> chatResult.action
+            chatResult.action != null && LocalAiAgentService.VALID_SYSTEM_ACTIONS.contains(chatResult.action) -> chatResult.action
             isAdmin && isLogoutCommand -> "logout"
             isUpdateFaceCommand -> "update-face-detect"
             else -> null
@@ -1864,6 +1864,9 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
     private fun speakAndShowBanner(text: String, emotion: String, onDone: (() -> Unit)? = null) {
         mainHandler.removeCallbacks(bannerHideRunnable)
 
+        // Tự động lưu tất cả câu nói của EVE (kể cả kịch bản cố định, chào hỏi, câu hỏi xác nhận) vào lịch sử ngữ cảnh
+        LocalAiAgentService.recordAssistantSpeech(text)
+
         eveWebView.setEmotion(emotion)
         binding.tvSpeechText.text = text
         binding.cardSpeechBanner.visibility = View.VISIBLE
@@ -1877,11 +1880,10 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
             if (!nonInterruptible.contains(eveWebView.currentEmotion)) {
                 eveWebView.setEmotion("idle")
             }
+            // Ẩn banner ngay lập tức khi âm thanh vừa dứt
+            binding.cardSpeechBanner.visibility = View.GONE
             onDone?.invoke()
         }
-
-        // Ẩn banner sau 7s
-        mainHandler.postDelayed(bannerHideRunnable, 7000)
     }
 
     override fun onDestroy() {

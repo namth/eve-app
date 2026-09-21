@@ -201,6 +201,20 @@ class VoiceAssistantManager(
                             return
                         }
 
+                        // Người dùng có cất lời nhưng nhận diện không ra chữ (ERROR_NO_MATCH):
+                        // Bỏ qua hoàn toàn, không phản hồi tiếng, tiếp tục lắng nghe Hands-Free
+                        if (hasUserStartedSpeaking && error == SpeechRecognizer.ERROR_NO_MATCH) {
+                            Log.d(TAG, "Speech detected but ERROR_NO_MATCH (unclear/muffled). Skipping silently and resuming listening.")
+                            if (isHandsFreeMode && isUserPresent && !isTtsSpeaking && !isListeningPaused) {
+                                mainHandler.postDelayed({
+                                    if (isHandsFreeMode && isUserPresent && !isListening && !isTtsSpeaking && !isListeningPaused) {
+                                        startListening()
+                                    }
+                                }, 800)
+                            }
+                            return
+                        }
+
                         // Lỗi khác hoặc không có mặt người dùng
                         if (isHandsFreeMode && isUserPresent && !isTtsSpeaking && !isListeningPaused) {
                             mainHandler.postDelayed({
@@ -236,6 +250,16 @@ class VoiceAssistantManager(
                                 noSpeechAttemptCount++
                                 Log.d(TAG, "Empty results on pre-speech silence! Attempt: $noSpeechAttemptCount")
                                 listener.onNoSpeechDetected(noSpeechAttemptCount)
+                            } else if (hasUserStartedSpeaking) {
+                                // Người dùng có cất lời nhưng kết quả rỗng -> Bỏ qua và lắng nghe tiếp
+                                Log.d(TAG, "Speech started but empty recognized text. Skipping silently and resuming listening.")
+                                if (isHandsFreeMode && isUserPresent && !isTtsSpeaking && !isListeningPaused) {
+                                    mainHandler.postDelayed({
+                                        if (isHandsFreeMode && isUserPresent && !isListening && !isTtsSpeaking && !isListeningPaused) {
+                                            startListening()
+                                        }
+                                    }, 800)
+                                }
                             } else if (isHandsFreeMode && isUserPresent && !isTtsSpeaking && !isListeningPaused) {
                                 mainHandler.postDelayed({
                                     if (isHandsFreeMode && isUserPresent && !isListening && !isTtsSpeaking && !isListeningPaused) {

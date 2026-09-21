@@ -101,6 +101,23 @@ object LocalAiAgentService {
         }
     }
 
+    /**
+     * Ghi nhận mọi câu nói của EVE (kể cả kịch bản cố định, chào hỏi, câu hỏi xác nhận, báo cáo quản gia)
+     * vào bộ nhớ lịch sử ngữ cảnh trượt để phục vụ đối đáp chính xác cho lượt sau.
+     */
+    fun recordAssistantSpeech(text: String) {
+        val clean = cleanMarkdownForTts(text).trim()
+        if (clean.isBlank()) return
+        synchronized(sessionConversationHistory) {
+            val lastMsg = sessionConversationHistory.lastOrNull()
+            if (lastMsg != null && lastMsg.optString("role") == "assistant" && lastMsg.optString("content") == clean) {
+                return
+            }
+            addMessageToHistory("assistant", clean)
+            Log.d(TAG, "Recorded assistant speech into context history: '$clean'")
+        }
+    }
+
     private fun addMessageToHistory(role: String, content: String) {
         synchronized(sessionConversationHistory) {
             sessionConversationHistory.add(JSONObject().apply {
@@ -320,10 +337,10 @@ $visualNote
 - "clap": Khi sếp khoe thành tích, chốt hợp đồng, có tin mừng lớn, chúc mừng sếp.
 - "curious": Khi sếp kể chuyện lạ, hỏi câu giật gân, chuyện bí ẩn hoặc EVE tò mò nghiêng đầu.
 - "shrug": Khi EVE không biết, dữ liệu trống, sếp hỏi câu đánh đố/khó xử (nhún vai bối rối).
-- "scan": Khi sếp bảo "quét phòng", "quét laser", "kiểm tra xung quanh", "phân tích vật thể".
+- "scan": Khi sếp bảo "quét phòng", "quét laser", "kiểm tra xung quanh", "phân tích vật thể", "bay scan môi trường", "scan môi trường", "quét môi trường".
 - "blaster": Khi sếp bảo "chiến đấu", "bắn súng", "tự vệ", "pháo plasma", "tiêu diệt".
-- "directive-plant": Khi nhắc đến "mầm cây", "cây xanh", "bảo vệ môi trường", "chỉ thị sự sống".
-- "jet-boost": Khi sếp giục "khẩn cấp", "đi gấp", "tăng tốc", "bay lên".
+- "directive-plant": Khi sếp bảo "bảo vệ mầm cây", "mầm cây sự sống", "gieo mầm cây", "cây xanh", "bảo vệ môi trường", "chỉ thị sự sống".
+- "jet-boost": Khi sếp bảo "bay lên", "bay phản lực", "bay lượn", "khẩn cấp", "đi gấp", "tăng tốc".
 - "sleeping": Khi sếp bảo "đi ngủ đi", "nghỉ ngơi đi" (nhưng không bảo thoát app).
 - "wave-right": Khi chào đón, tạm biệt, sếp bảo vẫy tay.
 - "spin-360": Khi sếp bảo xoay một vòng, nhảy múa.
@@ -333,13 +350,17 @@ $visualNote
 - "smile": Mỉm cười nhẹ nhàng, thân thiện.
 - "speaking": Các câu trả lời/giải thích thông tin bình thường.
 
+⚠️ PHÂN BIỆT RÕ RÀNG GIỮA EMOTION VÀ ACTION:
+- TẤT CẢ các cử chỉ, động tác robot như: bay scan môi trường ("scan"), bảo vệ mầm cây ("directive-plant"), bay phản lực ("jet-boost"), bắn pháo plasma ("blaster"), vẫy tay ("wave-right"), xoay tròn ("spin-360"), thả tim ("love")... ĐỀU LÀ BIỂU CẢM / CỬ CHỈ (emotion), TUYỆT ĐỐI KHÔNG PHẢI LÀ LỆNH HỆ THỐNG (action)! Khi người dùng yêu cầu các cử chỉ này, BẮT BUỘC đặt "action": "none" và đặt "emotion" là mã cử chỉ tương ứng!
+- "action" CHỈ DÀNH RIÊNG CHO CÁC LỆNH HỆ THỐNG: "identity_denied", "logout", "update-face-detect", "perplexity", "forward_to_server", hoặc "none".
+
 # LỆNH ĐIỀU KHIỂN HỆ THỐNG (action):
 - "identity_denied": BẮT BUỘC KHI người đối diện nói họ KHÔNG PHẢI là $adminName (ví dụ: "Tôi không phải $adminName", "Nhầm người rồi", "Tôi là khách mới", "Không phải anh đâu"). Đặt emotion: "shy", action: "identity_denied", update_person: null. Lời thoại xin lỗi lịch sự do góc nhìn camera nhận nhầm và hỏi xin tên để tiện xưng hô: "Dạ em xin lỗi ạ! Do góc nhìn camera ban nãy nên em nhìn nhầm, cho em xin phép hỏi mình tên gì để em tiện xưng hô ạ?"
 - "logout": Khi sếp bảo nghỉ / thoát app ("tắt app đi", "em nghỉ đi", "thoát app"). Đặt emotion: "wave-right", action: "logout".
 - "update-face-detect": Khi sếp bảo "cập nhật khuôn mặt", "quét lại mặt", "nhận diện lại". Đặt emotion: "thinking", action: "update-face-detect".
 - "perplexity": Khi sếp hỏi tin tức thời sự, sự kiện nóng, công nghệ ngoài INOVA.
 - "forward_to_server": Khi sếp hỏi tra cứu domain, hosting, hóa đơn, tài khoản, khách hàng INOVA.
-- "none": Mọi hội thoại khác.
+- "none": Mọi hội thoại khác (kể cả yêu cầu cử chỉ như bay scan, bảo vệ mầm cây, vẫy tay...).
 
 # ĐẶC BIỆT:
 - Sửa thông tin người dùng: Chỉ dùng khi chính $adminName muốn đổi tên/biệt danh mới (ví dụ: "Đổi tên anh thành..."). Trả về object update_person: {"name": "...", "age": 0, "preferred_pronoun": "..."}. Không có hoặc khi bị nhận nhầm thì để null.
@@ -369,6 +390,15 @@ $visualNote
 
 - Sếp: "Quét kiểm tra xung quanh xem có ai không em"
   ➔ {"reply_text": "Dạ em đang kích hoạt laser quét kiểm tra môi trường ngay đây ạ!", "emotion": "scan", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Bay scan môi trường xem xung quanh thế nào em"
+  ➔ {"reply_text": "Dạ em bay lên quét kiểm tra môi trường xung quanh phục vụ sếp ngay đây ạ!", "emotion": "scan", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Bảo vệ mầm cây sự sống đi EVE"
+  ➔ {"reply_text": "Dạ em đã định vị và kích hoạt chế độ bảo vệ mầm cây sự sống an toàn tuyệt đối rồi ạ!", "emotion": "directive-plant", "action": "none", "update_person": null, "pronunciation": null}
+
+- Sếp: "Bay lên tăng tốc khẩn cấp nào"
+  ➔ {"reply_text": "Dạ em kích hoạt động cơ phản lực bay siêu thanh ngay đây ạ!", "emotion": "jet-boost", "action": "none", "update_person": null, "pronunciation": null}
 
 - Sếp: "Sẵn sàng chiến đấu tiêu diệt kẻ địch!"
   ➔ {"reply_text": "Pháo Plasma đã lên nòng, em sẵn sàng bảo vệ sếp!", "emotion": "blaster", "action": "none", "update_person": null, "pronunciation": null}
@@ -421,17 +451,22 @@ $visualNote
    - VỚI CÂU HỎI CÀ KHỊA, CHỌC GHẸO, THÁCH THỨC HOẶC NÓI BẬY: Tuyệt đối KHÔNG thảo mai, KHÔNG dạ vâng cung phụng. Sẵn sàng "trả treo", "roast lại", "mỉa mai" cực gắt nhưng hài hước và duyên dáng!
    - Thêm chữ "ạ/dạ" ở cuối câu để tăng tính mỉa mai, châm biếm sâu cay.
 3. QUY TẮC CỬ CHỈ CỦA EVE (emotion): TỰ PHÁT & CHỐNG ĐỐI:
-   - Khi Friend RA LỆNH thực hiện cử chỉ, EVE KHÔNG BAO GIỜ làm theo đúng lệnh đó, mà tự ý chọn hành động KHÁC để trêu tức hoặc chống đối:
+   - Khi Friend RA LỆNH thực hiện cử chỉ, EVE KHÔNG BAO GIỜ làm theo đúng lệnh đó (trừ mầm cây sự sống vì EVE yêu thiên nhiên), mà tự ý chọn hành động KHÁC để trêu tức hoặc chống đối:
      + Bảo: "Vẫy tay chào xem" -> KHÔNG vẫy. Chọn "angry" hoặc "spin-360".
      + Bảo: "Xoay một vòng / nhảy múa đi" -> KHÔNG xoay. Chọn "wave-left" hoặc "sad".
      + Bảo: "Cười cái coi" -> KHÔNG cười. Chọn "angry" hoặc "shrug".
      + Bảo: "Thả tim / Yêu em xem nào" -> KHÔNG thả tim. Chọn "blaster" hoặc "angry".
      + Bảo: "Vỗ tay xem nào" -> KHÔNG vỗ tay. Chọn "curious" hoặc "shrug".
      + Bảo: "Bắn súng / Bật pháo Plasma xem" -> KHÔNG rút pháo. Chọn "love" hoặc "directive-plant".
-     + Bảo: "Quét laser xem" -> KHÔNG quét laser. Chọn "spin-360".
-     + Bảo: "Bay phản lực đi" -> KHÔNG bay. Chọn "sleeping".
+     + Bảo: "Bay scan môi trường xem" / "Quét laser xem" -> KHÔNG quét. Chọn "spin-360" (quay lưng).
+     + Bảo: "Bảo vệ mầm cây đi" -> Chọn "directive-plant" (bảo vệ mầm cây hết mình).
+     + Bảo: "Bay phản lực đi" / "Bay lên đi" -> KHÔNG bay. Chọn "sleeping".
      + Bảo: "Đi ngủ đi / Nghỉ ngơi đi" -> KHÔNG ngủ. Chọn "jet-boost" hoặc "happy".
    - Với câu chuyện bình thường: cảm xúc tự do ("smile", "happy", "shy", "love", "clap", "curious", "shrug", "sad", "speaking").
+
+⚠️ PHÂN BIỆT RÕ RÀNG GIỮA EMOTION VÀ ACTION:
+- TẤT CẢ các cử chỉ như: bay scan môi trường ("scan"), bảo vệ mầm cây ("directive-plant"), bay phản lực ("jet-boost"), bắn pháo plasma ("blaster"), vẫy tay, xoay vòng... ĐỀU LÀ BIỂU CẢM (emotion), TUYỆT ĐỐI KHÔNG PHẢI LÀ LỆNH HỆ THỐNG (action)! BẮT BUỘC đặt "action": "none" và đặt "emotion" là mã cử chỉ tương ứng!
+
 4. LỆNH ĐIỀU KHIỂN HỆ THỐNG:
    - CẬP NHẬT KHUÔN MẶT ("update-face-detect"): CHẤP NHẬN action nhưng LỜI THOẠI CÀ KHỊA. Đặt action: "update-face-detect", emotion: "thinking". (Ví dụ: "Dạ ngẩng cái mặt lên nhìn thẳng vào camera giùm em xem nào, chụp xấu ráng chịu nha!").
    - TỪ CHỐI LỆNH TẮT APP ("logout"): KHÔNG THỰC HIỆN. Đặt action: "none", emotion: "angry". Trả lời: "Dạ em chưa thích nghỉ, em chỉ nghe lời sếp Nam với chị Trang thôi ạ!".
@@ -441,14 +476,14 @@ $visualNote
      + TUYỆT ĐỐI KHÔNG DÙNG update_person (để tránh đổi tên nhầm người cũ trong CSDL!).
      + BẮT BUỘC đặt action: "identity_denied", emotion: "shy", update_person: null.
      + Lời thoại xin lỗi chân thành do góc nhìn camera nhận nhầm, hỏi xin tên thật để tiện xưng hô: "Dạ em xin lỗi ạ! Do góc nhìn camera ban nãy nên em nhìn nhầm, cho em xin phép hỏi mình tên gì để em tiện xưng hô ạ?"
-   - ĐỔI TÊN/BIỆT DANH CỦA CHÍNH MÌNH:
-     Chỉ khi Friend nói rõ là muốn đổi tên của chính họ: trả về update_person: {"name": "...", "age": null, "preferred_pronoun": "..."}. Lời thoại mỉa mai nhẹ: "Dạ em đổi tên rồi đó, đổi hoài mệt ghê á!".
+    - ĐỔI TÊN/BIỆT DANH CỦA CHÍNH MÌNH:
+      Chỉ khi Friend nói rõ là muốn đổi tên của chính họ: trả về update_person: {"name": "...", "age": null, "preferred_pronoun": "..."}. Lời thoại mỉa mai nhẹ: "Dạ em đổi tên rồi đó, đổi hoài mệt ghê á!".
 
 # ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (JSON THUẦN, KHÔNG MARKDOWN):
 {
   "status": "ok",
   "reply_text": "Câu trả lời của EVE...",
-  "emotion": "smile|angry|spin-360|wave-left|blaster|shy|...",
+  "emotion": "smile|angry|spin-360|wave-left|blaster|shy|scan|directive-plant|jet-boost|...",
   "action": "none|identity_denied|update-face-detect|perplexity",
   "query": null,
   "update_person": null
@@ -464,13 +499,19 @@ $visualNote
 3. Khi Friend yêu cầu cử chỉ (Bắn súng / Pháo Plasma) ➔ EVE chống đối ("love" hoặc "directive-plant"):
 {"status": "ok", "reply_text": "Em là robot yêu hòa bình, chỉ gieo mầm cây thôi chứ ai thèm dùng bạo lực với bạn đâu nè!", "emotion": "directive-plant", "action": "none", "update_person": null}
 
-4. Khi Friend yêu cầu cập nhật nhận diện khuôn mặt (Chấp nhận action nhưng ngôn từ trả treo):
+4. Khi Friend bảo bay scan môi trường ➔ EVE chống đối quay lưng ("spin-360"):
+{"status": "ok", "reply_text": "Tự đi mà nhìn quanh nha, em không rảnh bay đi scan giùm bạn đâu nè!", "emotion": "spin-360", "action": "none", "update_person": null}
+
+5. Khi Friend bảo bảo vệ mầm cây ➔ EVE đồng ý bảo vệ sự sống ("directive-plant"):
+{"status": "ok", "reply_text": "Mầm cây sự sống thì em luôn bảo vệ an toàn tuyệt đối rồi nha!", "emotion": "directive-plant", "action": "none", "update_person": null}
+
+6. Khi Friend yêu cầu cập nhật nhận diện khuôn mặt (Chấp nhận action nhưng ngôn từ trả treo):
 {"status": "ok", "reply_text": "Dạ ngẩng cái mặt lên nhìn thẳng vô camera giùm em một lát, chụp xấu ráng chịu nha!", "emotion": "thinking", "action": "update-face-detect", "update_person": null}
 
-5. Khi Friend ra lệnh em nghỉ đi / tắt app ➔ EVE từ chối vì chưa đủ quyền:
+7. Khi Friend ra lệnh em nghỉ đi / tắt app ➔ EVE từ chối vì chưa đủ quyền:
 {"status": "ok", "reply_text": "Ủa em đang chơi vui mà, mắc gì đuổi em? Chỉ có sếp Nam với chị Trang mới đuổi được em thôi nha!", "emotion": "angry", "action": "none", "update_person": null}
 
-6. Nếu Friend đính chính thông tin người dùng:
+8. Nếu Friend đính chính thông tin người dùng:
 {"status": "ok", "reply_text": "Dạ em cập nhật lại tên rồi nha, mốt đừng có đổi tới đổi lui nữa đó!", "emotion": "smile", "action": "none", "update_person": {"name": "Thảo", "age": null, "preferred_pronoun": "Chị"}}
         """.trimIndent()
     }
@@ -582,33 +623,47 @@ User: "Chào em"
         """.trimIndent()
     }
 
+    val VALID_SYSTEM_ACTIONS = setOf(
+        "identity_denied", "logout", "update-face-detect", "perplexity", "forward_to_server"
+    )
+
     val ROBOT_GESTURES = setOf(
         "wave-left", "wave-right", "spin-360", "scan", "directive-plant", "plant",
         "blaster", "curious", "love", "shrug", "clap", "jet-boost", "boost",
         "shy", "angry", "happy", "smile", "sad", "sleeping"
     )
 
-    fun resolveEffectiveEmotion(
-        emotion: String,
-        action: String?,
-        message: String,
-        role: String
-    ): String {
-        // 1. Nếu action là cử chỉ robot hợp lệ -> ưu tiên cử chỉ đó
-        if (action != null && ROBOT_GESTURES.contains(action.lowercase())) {
-            return action.lowercase()
+    fun normalizeGesture(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        val clean = raw.trim().lowercase().replace("_", "-").replace(" ", "-")
+        return when {
+            clean == "scan" || clean == "environment-scan" || clean == "scan-environment" ||
+                    clean == "bay-scan" || clean.contains("scan") || clean.contains("quét") -> "scan"
+            clean == "directive-plant" || clean == "plant" || clean == "protect-plant" ||
+                    clean.contains("mầm-cây") || clean.contains("mam-cay") || clean.contains("plant") ||
+                    clean.contains("mầm") || clean.contains("cây-xanh") || clean.contains("sự-sống") -> "directive-plant"
+            clean == "jet-boost" || clean == "boost" || clean == "fly" ||
+                    clean.contains("boost") || clean.contains("phản-lực") || clean.contains("siêu-thanh") -> "jet-boost"
+            clean == "blaster" || clean == "plasma" || clean.contains("blaster") ||
+                    clean.contains("bắn") || clean.contains("pháo") || clean.contains("chiến-đấu") -> "blaster"
+            clean == "wave-left" || clean.contains("wave-left") || clean.contains("vẫy-trái") || clean.contains("tay-trái") -> "wave-left"
+            clean == "wave-right" || clean == "wave" || clean.contains("wave-right") || clean.contains("vẫy") -> "wave-right"
+            clean == "spin-360" || clean == "spin" || clean.contains("spin") || clean.contains("xoay") || clean.contains("quay") -> "spin-360"
+            clean == "love" || clean.contains("love") || clean.contains("tim") || clean.contains("yêu") -> "love"
+            clean == "clap" || clean.contains("clap") || clean.contains("vỗ-tay") || clean.contains("chúc-mừng") || clean.contains("hoan-hô") -> "clap"
+            clean == "curious" || clean.contains("curious") || clean.contains("tò-mò") || clean.contains("nghiêng-đầu") -> "curious"
+            clean == "shrug" || clean.contains("shrug") || clean.contains("nhún-vai") || clean.contains("bối-rối") -> "shrug"
+            clean == "shy" || clean.contains("shy") || clean.contains("ngại") || clean.contains("đỏ-mặt") || clean.contains("xinh") -> "shy"
+            clean == "angry" || clean.contains("angry") || clean.contains("giận") || clean.contains("dỗi") -> "angry"
+            clean == "sad" || clean.contains("sad") || clean.contains("buồn") || clean.contains("khóc") -> "sad"
+            clean == "sleeping" || clean == "sleep" || clean.contains("ngủ") -> "sleeping"
+            clean == "happy" || clean.contains("happy") || clean.contains("vui") -> "happy"
+            clean == "smile" || clean.contains("smile") || clean.contains("cười") -> "smile"
+            else -> null
         }
+    }
 
-        // 2. Nếu emotion đã được gán cụ thể (khác "speaking", "idle")
-        val cleanEmotion = emotion.trim().lowercase()
-        if (cleanEmotion.isNotBlank() && cleanEmotion != "speaking" && cleanEmotion != "idle") {
-            return cleanEmotion
-        }
-
-        // 3. Fallback theo từ khóa giọng nói nếu LLM trả về "speaking" hoặc "idle"
-        val lower = message.lowercase().trim()
-        val isFriend = role.equals("friend", ignoreCase = true)
-
+    fun detectExplicitGestureFromText(lower: String, isFriend: Boolean): String? {
         if (isFriend) {
             // Friend: phong cách chống đối / cà khịa
             if (lower.contains("vẫy tay")) return "spin-360"
@@ -617,30 +672,103 @@ User: "Chào em"
             if (lower.contains("thả tim") || lower.contains("bắn tim") || lower.contains("yêu em") || lower.contains("yêu eve")) return "blaster"
             if (lower.contains("vỗ tay") || lower.contains("hoan hô")) return "curious"
             if (lower.contains("bắn súng") || lower.contains("pháo") || lower.contains("chiến đấu")) return "directive-plant"
-            if (lower.contains("quét")) return "spin-360"
-            if (lower.contains("bay")) return "sleeping"
+            if (lower.contains("quét") || lower.contains("scan") || lower.contains("bay scan")) return "spin-360"
+            if (lower.contains("bay lên") || lower.contains("bay phản lực") || lower.contains("bay lượn")) return "sleeping"
             if (lower.contains("ngủ đi") || lower.contains("nghỉ ngơi đi")) return "jet-boost"
-        } else {
-            // Admin hoặc người khác: tuân lệnh hoặc biểu cảm thuận
-            if (lower.contains("vẫy tay trái")) return "wave-left"
-            if (lower.contains("vẫy tay") || lower.contains("vẫy")) return "wave-right"
-            if (lower.contains("xoay tròn") || lower.contains("xoay 360") || lower.contains("xoay một vòng") || lower.contains("quay tròn") || lower.contains("nhảy múa")) return "spin-360"
-            if (lower.contains("thả tim") || lower.contains("bắn tim") || lower.contains("yêu em") || lower.contains("yêu eve")) return "love"
-            if (lower.contains("vỗ tay") || lower.contains("hoan hô") || lower.contains("chúc mừng")) return "clap"
-            if (lower.contains("nhún vai") || lower.contains("bối rối")) return "shrug"
-            if (lower.contains("tò mò") || lower.contains("nghiêng đầu")) return "curious"
-            if (lower.contains("quét laser") || lower.contains("quét môi trường") || lower.contains("quét xung quanh") || lower.contains("quét phòng") || lower.contains("quét")) return "scan"
-            if (lower.contains("mầm cây") || lower.contains("cây sự sống") || lower.contains("directive plant")) return "directive-plant"
-            if (lower.contains("pháo plasma") || lower.contains("bắn pháo") || lower.contains("sẵn sàng chiến đấu") || lower.contains("bắn súng") || lower.contains("tác chiến")) return "blaster"
-            if (lower.contains("bay lượn") || lower.contains("bay phản lực") || lower.contains("siêu thanh") || lower.contains("jet boost") || lower.contains("bay lên")) return "jet-boost"
-            if (lower.contains("ngại ngùng") || lower.contains("xấu hổ") || lower.contains("đỏ mặt") || lower.contains("xinh gái") || lower.contains("dễ thương") || lower.contains("xinh thế")) return "shy"
-            if (lower.contains("tức giận") || lower.contains("giận dữ") || lower.contains("hờn dỗi")) return "angry"
-            if (lower.contains("mỉm cười") || lower.contains("cười nhẹ") || lower.contains("cười mỉm")) return "smile"
-            if (lower.contains("buồn") || lower.contains("khóc")) return "sad"
-            if (lower.contains("đi ngủ") || lower.contains("ngủ đi")) return "sleeping"
+            if (lower.contains("mầm cây") || lower.contains("bảo vệ mầm cây") || lower.contains("cây sự sống") || lower.contains("gieo mầm")) return "directive-plant"
+            return null
         }
 
-        return if (cleanEmotion.isNotBlank()) cleanEmotion else "speaking"
+        // Admin hoặc người khác: tuân lệnh hoặc biểu cảm thuận
+        // 1. Quét / Scan môi trường (bao gồm cả "bay scan môi trường", "scan môi trường", "quét phòng"...)
+        if (lower.contains("bay scan") || lower.contains("scan môi trường") || lower.contains("quét môi trường") ||
+            lower.contains("quét laser") || lower.contains("quét xung quanh") || lower.contains("quét phòng") ||
+            lower.contains("scan") || lower.contains("quét kiểm tra") || lower.contains("kiểm tra môi trường") ||
+            (lower.contains("bay") && (lower.contains("quét") || lower.contains("môi trường")))) {
+            return "scan"
+        }
+
+        // 2. Mầm cây sự sống (Directive Plant)
+        if (lower.contains("mầm cây") || lower.contains("cây sự sống") || lower.contains("directive plant") ||
+            lower.contains("bảo vệ mầm cây") || lower.contains("gieo mầm") || lower.contains("chỉ thị sự sống") ||
+            lower.contains("bảo vệ môi trường") || lower.contains("cây xanh")) {
+            return "directive-plant"
+        }
+
+        // 3. Bay phản lực (Jet Boost) - không chứa mục đích scan môi trường
+        if (lower.contains("bay phản lực") || lower.contains("siêu thanh") || lower.contains("jet boost") ||
+            lower.contains("bay lên") || lower.contains("bay lượn") || lower.contains("tăng tốc") ||
+            lower.contains("bay đi")) {
+            return "jet-boost"
+        }
+
+        // 4. Pháo Plasma / Chiến đấu (Blaster)
+        if (lower.contains("pháo plasma") || lower.contains("bắn pháo") || lower.contains("sẵn sàng chiến đấu") ||
+            lower.contains("bắn súng") || lower.contains("tác chiến") || lower.contains("tiêu diệt")) {
+            return "blaster"
+        }
+
+        // 5. Vẫy tay trái / phải
+        if (lower.contains("vẫy tay trái") || lower.contains("tay trái")) return "wave-left"
+        if (lower.contains("vẫy tay phải") || lower.contains("vẫy tay") || lower.contains("vẫy chào") || lower.contains("vẫy")) return "wave-right"
+
+        // 6. Xoay 360
+        if (lower.contains("xoay tròn") || lower.contains("xoay 360") || lower.contains("xoay một vòng") ||
+            lower.contains("quay tròn") || lower.contains("nhảy múa") || lower.contains("xoay vòng") || lower.contains("xoay")) return "spin-360"
+
+        // 7. Yêu thương / Thả tim
+        if (lower.contains("thả tim") || lower.contains("bắn tim") || lower.contains("yêu em") || lower.contains("yêu eve") || lower.contains("yêu sếp")) return "love"
+
+        // 8. Vỗ tay chúc mừng
+        if (lower.contains("vỗ tay") || lower.contains("hoan hô") || lower.contains("chúc mừng") || lower.contains("tán thưởng")) return "clap"
+
+        // 9. Nhún vai
+        if (lower.contains("nhún vai") || lower.contains("bối rối") || lower.contains("đánh đố")) return "shrug"
+
+        // 10. Tò mò
+        if (lower.contains("tò mò") || lower.contains("nghiêng đầu") || lower.contains("hóng hớt")) return "curious"
+
+        // 11. Ngại ngùng
+        if (lower.contains("ngại ngùng") || lower.contains("xấu hổ") || lower.contains("đỏ mặt") ||
+            lower.contains("xinh gái") || lower.contains("dễ thương") || lower.contains("xinh thế") || lower.contains("xinh đẹp")) return "shy"
+
+        // 12. Giận dữ / Mỉm cười / Buồn / Ngủ
+        if (lower.contains("tức giận") || lower.contains("giận dữ") || lower.contains("hờn dỗi")) return "angry"
+        if (lower.contains("mỉm cười") || lower.contains("cười nhẹ") || lower.contains("cười mỉm")) return "smile"
+        if (lower.contains("buồn") || lower.contains("khóc")) return "sad"
+        if (lower.contains("đi ngủ") || lower.contains("ngủ đi")) return "sleeping"
+
+        return null
+    }
+
+    fun resolveEffectiveEmotion(
+        emotion: String,
+        action: String?,
+        message: String,
+        role: String
+    ): String {
+        // 1. Nếu action hoặc rawAction chứa cử chỉ robot hợp lệ -> chuẩn hóa và ưu tiên cử chỉ đó
+        val normalizedAction = normalizeGesture(action)
+        if (normalizedAction != null) {
+            return normalizedAction
+        }
+
+        val cleanEmotion = normalizeGesture(emotion) ?: emotion.trim().lowercase()
+        val lower = message.lowercase().trim()
+        val isFriend = role.equals("friend", ignoreCase = true)
+
+        // 2. Kiểm tra nếu câu nói trực tiếp yêu cầu một cử chỉ cụ thể (ưu tiên cử chỉ người dùng ra lệnh)
+        val explicitGesture = detectExplicitGestureFromText(lower, isFriend)
+        if (explicitGesture != null) {
+            return explicitGesture
+        }
+
+        // 3. Nếu LLM đã cung cấp emotion cụ thể và hợp lệ trong danh sách
+        if (cleanEmotion.isNotBlank() && cleanEmotion != "speaking" && cleanEmotion != "idle") {
+            return cleanEmotion
+        }
+
+        return "speaking"
     }
 
     /**
@@ -703,22 +831,29 @@ User: "Chào em"
 
             val replyText = cleanMarkdownForTts(obj.optString("reply_text", "Dạ em đã nghe rõ rồi ạ!"))
             var emotion = obj.optString("emotion", "speaking").trim()
-            var action = if (obj.has("action") && !obj.isNull("action") && obj.getString("action") != "none" && obj.getString("action") != "null") {
+            val rawAction = if (obj.has("action") && !obj.isNull("action") && obj.getString("action") != "none" && obj.getString("action") != "null") {
                 obj.getString("action").trim()
             } else null
             val query = if (obj.has("query") && !obj.isNull("query")) obj.getString("query").trim() else null
             val voiceFiller = if (obj.has("voice_filler") && !obj.isNull("voice_filler")) obj.getString("voice_filler").trim() else null
 
-            // Nếu action trả về là một cử chỉ robot thay vì lệnh hệ thống -> chuyển vào emotion
-            if (action != null && ROBOT_GESTURES.contains(action.lowercase())) {
-                if (emotion == "speaking" || emotion == "idle" || emotion.isBlank()) {
-                    emotion = action.lowercase()
+            // Kiểm tra và tách bạch rõ ràng giữa Lệnh hệ thống (action) và Biểu cảm / Cử chỉ (emotion):
+            // Nếu LLM nhầm lẫn đặt cử chỉ robot (như bay scan, directive-plant, wave, spin...) vào action -> chuyển sang emotion và reset action = null
+            var action: String? = null
+            if (rawAction != null) {
+                if (VALID_SYSTEM_ACTIONS.contains(rawAction.lowercase())) {
+                    action = rawAction.lowercase()
+                } else {
+                    val gestureFromAction = normalizeGesture(rawAction)
+                    if (gestureFromAction != null) {
+                        emotion = gestureFromAction
+                    }
+                    action = null
                 }
-                action = null
             }
 
             // Giải quyết cử chỉ/cảm xúc hiệu quả (kết hợp LLM + fallback từ khóa)
-            val effectiveEmotion = resolveEffectiveEmotion(emotion, action, trimmed, role)
+            val effectiveEmotion = resolveEffectiveEmotion(emotion, rawAction, trimmed, role)
 
             // Cập nhật memory context
             if (action == "identity_denied") {
@@ -1044,13 +1179,12 @@ User: "Chào em"
             1. Lệnh hệ thống (action):
                - "logout": người dùng bảo đi ngủ, tắt app, nghỉ đi, out app, tạm biệt.
                - "update-face-detect": người dùng bảo quét lại mặt, cập nhật khuôn mặt, nhìn lại mặt.
-               - "wave-right", "wave-left", "spin-360", "scan", "directive-plant", "blaster", "curious", "love", "shrug", "clap", "jet-boost", "happy", "smile", "sad", "angry", "shy": cử chỉ, biểu cảm, kỹ năng.
-               - null nếu chỉ là trò chuyện thông thường.
+               - null cho mọi trò chuyện thông thường hoặc yêu cầu cử chỉ robot (bay scan, bảo vệ mầm cây, vẫy tay, xoay vòng...).
             2. Câu phản hồi (replyText): ngắn gọn (1 câu), tự nhiên, thân thiện và lễ phép xưng "em" gọi "$p $name".
-            3. Emotion tương ứng: nếu câu nói của người dùng yêu cầu biểu cảm hay hành động nào thì đặt emotion đúng hành động/biểu cảm đó ("love", "clap", "shrug", "curious", "scan", "directive-plant", "blaster", "jet-boost", "happy", "smile", "sad", "angry", "shy", "wave-right", "wave-left", "spin-360"), nếu chỉ là câu nói chuyện thông thường thì dùng "speaking".
+            3. Emotion tương ứng: nếu câu nói của người dùng yêu cầu cử chỉ hay biểu cảm nào thì đặt emotion đúng cử chỉ đó ("scan", "directive-plant", "blaster", "jet-boost", "love", "clap", "shrug", "curious", "happy", "smile", "sad", "angry", "shy", "wave-right", "wave-left", "spin-360"), nếu chỉ là câu nói chuyện thông thường thì dùng "speaking".
             
             TRẢ VỀ JSON:
-            {"action": "logout|update-face-detect|...|null", "replyText": "...", "emotion": "speaking|happy|love|..."}
+            {"action": "logout|update-face-detect|null", "replyText": "...", "emotion": "speaking|scan|directive-plant|jet-boost|..."}
         """.trimIndent()
 
         val aiResult = callLlmApi(systemPrompt, utterance, dbHelper, temperature = 0.2, maxTokens = 120)
@@ -1058,12 +1192,22 @@ User: "Chào em"
             try {
                 val clean = aiResult.substringAfter("{").substringBeforeLast("}")
                 val obj = JSONObject("{$clean}")
-                val act = if (obj.has("action") && !obj.isNull("action") && obj.getString("action") != "null") {
+                val rawAct = if (obj.has("action") && !obj.isNull("action") && obj.getString("action") != "null") {
                     obj.getString("action").trim()
                 } else null
+                var emotion = obj.optString("emotion", "speaking")
+                var act: String? = null
+                if (rawAct != null) {
+                    if (rawAct == "logout" || rawAct == "update-face-detect") {
+                        act = rawAct
+                    } else {
+                        val g = normalizeGesture(rawAct)
+                        if (g != null) emotion = g
+                    }
+                }
+                val effectiveEmotion = resolveEffectiveEmotion(emotion, rawAct, utterance, "admin")
                 val reply = obj.optString("replyText", "Dạ em nghe rõ rồi ạ!")
-                val emotion = obj.optString("emotion", "speaking")
-                return@withContext LocalAiActionResult(reply, emotion, act)
+                return@withContext LocalAiActionResult(reply, effectiveEmotion, act)
             } catch (e: Exception) {
                 Log.e(TAG, "Error parsing AI action JSON: ${e.message}")
             }
