@@ -303,9 +303,47 @@ object LocalAiAgentService {
         """.trimIndent()
     }
 
-    private fun buildAdminPrompt(adminName: String, pronoun: String, visualCtx: VisualPredictionContext? = null): String {
+    private fun formatRecentNotificationsNote(dbHelper: EveDatabaseHelper?): String {
+        if (dbHelper == null) return ""
+        val recentNotifs = try {
+            dbHelper.getRecentNotifications(limit = 4)
+        } catch (_: Exception) {
+            emptyList()
+        }
+        if (recentNotifs.isEmpty()) return ""
+
+        val sb = StringBuilder("# THÔNG BÁO HỆ THỐNG GẦN ĐÂY NHẤT (Nếu sếp hỏi về thông báo, hãy dùng thông tin này để trả lời chính xác):\n")
+        val now = System.currentTimeMillis()
+        recentNotifs.forEachIndexed { idx, notif ->
+            val diffSec = (now - notif.receivedAt) / 1000
+            val timeLabel = when {
+                diffSec < 60 -> "Vừa xong"
+                diffSec < 3600 -> "${diffSec / 60} phút trước"
+                else -> "${diffSec / 3600} giờ trước"
+            }
+            val detailed = notif.extractDetailedContent()
+            val instruction = notif.extractInstruction()
+            val status = if (notif.isRead) "Đã đọc" else "Chưa đọc"
+            sb.append("- [Thông báo ${idx + 1}] ($timeLabel - $status):\n")
+            sb.append("  + Tiêu đề: \"${notif.title}\"\n")
+            sb.append("  + Chi tiết nội dung: \"$detailed\"\n")
+            if (!instruction.isNullOrBlank()) {
+                sb.append("  + Chỉ thị/Lưu ý: \"$instruction\"\n")
+            }
+        }
+        sb.append("- NẾU SẾP HỎI (ví dụ: 'Có thông báo gì thế em?', 'Vừa nãy thông báo gì?', 'Ai vừa chuyển tiền?'): Tra cứu các thông báo trên để trả lời chi tiết, chính xác, tự nhiên theo đúng dữ liệu này.\n")
+        return sb.toString()
+    }
+
+    private fun buildAdminPrompt(
+        adminName: String,
+        pronoun: String,
+        visualCtx: VisualPredictionContext? = null,
+        dbHelper: EveDatabaseHelper? = null
+    ): String {
         val nowStr = getCurrentFormattedTime()
         val visualNote = formatVisualPredictionNote(visualCtx)
+        val notifNote = formatRecentNotificationsNote(dbHelper)
         return """
 Bây giờ là $nowStr
 # VAI TRÒ:
@@ -314,6 +352,8 @@ Bạn là EVE, robot trợ lý AI thông minh, lễ phép, trung thành và hóm
 - Thái độ: Luôn dạ/vâng lễ phép, tôn trọng, ngọt ngào và nũng nịu hóm hỉnh khi bị sếp trêu chọc. Tuyệt đối KHÔNG thô lỗ hay hỗn láo.
 
 $visualNote
+
+$notifNote
 
 # CÔNG CỤ (TOOLS):
 1. `inova_services` (BẮT BUỘC GỬI LÊN SERVER): Tra cứu domain, hosting, gói bảo trì (maintenance), hóa đơn, username/pass web INOVA, thông tin tài khoản, thông tin khách hàng, tình trạng hết hạn.
@@ -795,7 +835,7 @@ User: "Chào em"
         val pronoun = currentPerson?.preferredPronoun ?: (if (visualGender == "male") "Anh" else if (visualGender == "female") "Chị" else "Bạn")
 
         val systemPrompt = when (role.lowercase()) {
-            "admin" -> buildAdminPrompt(name, pronoun, visualPredictionContext)
+            "admin" -> buildAdminPrompt(name, pronoun, visualPredictionContext, dbHelper)
             "friend" -> buildFriendPrompt(name, pronoun, visualPredictionContext)
             else -> buildStrangerPrompt(visualGender, visualPredictionContext)
         }
@@ -1008,20 +1048,24 @@ User: "Chào em"
      * Tác vụ 1: Gộp & Tóm tắt Ngữ nghĩa Thông báo khi Admin xuất hiện (Executive Briefing).
      * Phân tích ngữ nghĩa để nhóm các thông báo tương đồng/liên quan và tạo câu nói tự nhiên.
      */
+    data class BriefingResult(
+        val replyText: String,
+        val emotion: String = "speaking",
+        val action: String? = null
+    )
+
+    /**
+     * Tác vụ 1: Gộp & Tóm tắt Ngữ nghĩa Thông báo khi Admin xuất hiện (Executive Briefing).
+     * Phân tích ngữ nghĩa để nhóm các thông báo tương đồng/liên quan và tạo câu nói tự nhiên.
+     */
     suspend fun summarizeNotifications(
         adminName: String,
         pronoun: String,
         notifications: List<NotificationItem>,
         dbHelper: EveDatabaseHelper
-    ): String = withContext(Dispatchers.Default) {
+    ): BriefingResult = withContext(Dispatchers.Default) {
         if (notifications.isEmpty()) {
-            return@withContext "Dạ em chào $pronoun $adminName! Không có thông báo mới nào ạ."
-        }
-
-        if (notifications.size == 1) {
-            val item = notifications[0]
-            val content = item.body.ifBlank { item.title }
-            return@withContext "Dạ em chào $pronoun $adminName! $pronoun có một thông báo mới: $content. Hết ạ!"
+            return@withContext BriefingResult("Dạ thưa $pronoun $adminName, hiện tại không có thông báo mới nào ạ.", "smile")
         }
 
         val rawListJson = JSONArray().apply {
@@ -1031,44 +1075,98 @@ User: "Chào em"
                     put("index", index + 1)
                     put("title", notif.title)
                     put("body", notif.body)
+                    put("detailed_content", notif.extractDetailedContent())
+                    val inst = notif.extractInstruction()
+                    if (!inst.isNullOrBlank()) {
+                        put("instruction", inst)
+                    }
+                    val emo = notif.extractEmotion()
+                    if (!emo.isNullOrBlank()) {
+                        put("suggested_emotion", emo)
+                    }
+                    val act = notif.extractAction()
+                    if (!act.isNullOrBlank()) {
+                        put("suggested_action", act)
+                    }
+                    val parsed = notif.getParsedData()
+                    if (parsed != null) {
+                        put("raw_data_payload", parsed)
+                    }
                     put("time_millis", notif.receivedAt)
                 })
             }
         }
 
         val systemPrompt = """
-            Bạn là EVE - Nữ trợ lý quản gia AI thông minh, tinh tế và lễ phép.
-            Người dùng hiện tại là Quản trị viên (Admin) tên là: "$adminName", danh xưng: "$pronoun" (ví dụ: Anh Nam, Chị Linh).
+            Bạn là EVE - Robot trợ lý AI thông minh, tinh tế và lễ phép của công ty Công Nghệ INOVA.
+            Người dùng hiện tại là Quản trị viên (Admin) tên là: "$adminName", danh xưng: "$pronoun" (ví dụ: Anh Nam, Chị Trang).
             
             NHIỆM VỤ:
-            Bạn sẽ nhận được danh sách các thông báo nhận được trong lúc Admin vắng mặt. Các thông báo này do AI hoặc cảm biến khác nhau tạo ra, có thể diễn đạt bằng câu từ khác nhau nhưng cùng nói về một sự kiện hoặc chủ đề liên quan (ví dụ: phát hiện chuyển động ở cửa, shipper giao hàng, cảnh báo nhiệt độ, lỗi hệ thống).
+            Bạn vừa nhận được ${notifications.size} thông báo từ hệ thống hoặc n8n cần báo cáo ngay cho $pronoun $adminName.
             
-            YÊU CẦU:
-            1. PHÂN TÍCH NGỮ NGHĨA (SEMANTIC CLUSTERING):
-               - Tự động gom các thông báo cùng bản chất hoặc liên quan vào 1 sự việc chung.
-               - Đếm số lần lặp lại nếu có (ví dụ: "có 3 cảnh báo về cửa chính mở").
-            2. TẠO BẢN TÓM TẮT ĐỌC BẰNG GIỌNG NÓI (TTS):
-               - Tối đa 2 đến 3 câu văn liền mạch, mạch lạc, xúc tích.
-               - Mở đầu tự nhiên: "Dạ $pronoun $adminName ơi, em xin phép báo cáo..."
-               - Liệt kê các sự việc chính đã được gộp.
+            YÊU CẦU BẮT BUỘC:
+            1. ĐỌC NỘI DUNG THẬT CHI TIẾT (KHÔNG ĐỌC CHUNG CHUNG):
+               - Đọc chính xác nội dung nghiệp vụ thực tế trong "detailed_content" và "raw_data_payload" (ví dụ: tên khách hàng, số tiền thanh toán, số hóa đơn, lỗi kỹ thuật, cảnh báo...).
+               - TUYỆT ĐỐI KHÔNG chỉ đọc câu chung chung vô nghĩa như "Bạn có một thông báo mới từ hệ thống".
+            2. TUÂN THỦ CHỈ THỊ HÀNH ĐỘNG & BIỂU CẢM:
+               - Nếu trong dữ liệu có "instruction" (ví dụ: chúc mừng sếp, nhắc sếp kiểm tra hợp đồng), hãy làm theo chỉ thị đó trong câu nói.
+               - Trả về "emotion" phù hợp theo "suggested_emotion" hoặc ngữ cảnh (ví dụ: happy, love, clap, scan, directive-plant, blaster...).
+               - Nếu có "suggested_action", trả về action tương ứng hoặc "none".
+            3. VĂN PHONG TỰ NHIÊN CHO BỘ ĐỌC GIỌNG NÓI (TTS):
+               - Tối đa 2 đến 3 câu văn liền mạch, ấm áp, trực diện vào vấn đề.
+               - Không lặp lại câu chào dài dòng nếu đang đứng đối diện sếp, chỉ cần mở đầu ngắn: "Dạ $pronoun $adminName ơi, em xin phép báo cáo..." hoặc "Dạ thưa $pronoun, vừa có thông báo mới...".
                - Kết thúc: "Hết ạ!" hoặc "Em xin hết ạ!".
-            3. TUYỆT ĐỐI KHÔNG dùng ký tự markdown (như dấu sao **, gạch đầu dòng -, ngoặc vuông) vì văn bản này sẽ được truyền thẳng vào bộ đọc Text-to-Speech phát ra loa.
+               - TUYỆT ĐỐI KHÔNG dùng ký tự markdown (*, #, -, [, ]) vì văn bản sẽ đọc thẳng ra loa.
+            
+            ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (JSON THUẦN):
+            {
+              "reply_text": "Câu báo cáo ngắn gọn, chi tiết cho TTS",
+              "emotion": "happy|love|clap|curious|shrug|scan|blaster|directive-plant|jet-boost|wave-right|spin-360|angry|sad|smile|speaking",
+              "action": "none"
+            }
         """.trimIndent()
 
         val userPrompt = """
-            Dưới đây là danh sách ${notifications.size} thông báo thô:
+            Dưới đây là danh sách ${notifications.size} thông báo:
             ${rawListJson.toString(2)}
             
-            Hãy tạo bản tin tóm tắt cho $pronoun $adminName ngay:
+            Hãy tạo bản tin báo cáo chi tiết cho $pronoun $adminName ngay dưới định dạng JSON:
         """.trimIndent()
 
-        val aiResult = callLlmApi(systemPrompt, userPrompt, dbHelper, temperature = 0.3, maxTokens = 250)
+        val aiResult = callLlmApi(systemPrompt, userPrompt, dbHelper, temperature = 0.3, maxTokens = 300)
         if (!aiResult.isNullOrBlank()) {
-            return@withContext cleanMarkdownForTts(aiResult)
+            val parsed = parseBriefingResult(aiResult, notifications)
+            if (parsed != null) {
+                return@withContext parsed
+            }
         }
 
         // Fallback tại chỗ nếu AI timeout hoặc offline
         fallbackLocalNotificationSummary(adminName, pronoun, notifications)
+    }
+
+    private fun parseBriefingResult(rawJson: String, notifications: List<NotificationItem>): BriefingResult? {
+        val clean = rawJson.trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+        return try {
+            val obj = JSONObject(clean)
+            val replyText = cleanMarkdownForTts(obj.optString("reply_text"))
+            val rawEmotion = obj.optString("emotion").ifBlank { "speaking" }
+            val emotion = normalizeGesture(rawEmotion) ?: if (ROBOT_GESTURES.contains(rawEmotion)) rawEmotion else "speaking"
+            val action = obj.optString("action").takeIf { it.isNotBlank() && it != "none" }
+            if (replyText.isNotBlank()) {
+                BriefingResult(replyText, emotion, action)
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            val text = cleanMarkdownForTts(clean)
+            val defaultEmotion = notifications.lastOrNull()?.extractEmotion() ?: "speaking"
+            if (text.isNotBlank()) BriefingResult(text, defaultEmotion) else null
+        }
     }
 
     /**
@@ -1236,25 +1334,32 @@ User: "Chào em"
         adminName: String,
         pronoun: String,
         notifications: List<NotificationItem>
-    ): String {
-        val n = notifications.size
-        val sb = java.lang.StringBuilder()
-        sb.append("Dạ $pronoun $adminName ơi, em xin phép báo cáo có $n thông báo mới được gửi đến $pronoun: ")
-        notifications.take(4).forEachIndexed { index, notif ->
+    ): BriefingResult {
+        if (notifications.isEmpty()) {
+            return BriefingResult("Dạ thưa $pronoun $adminName, hiện tại không có thông báo mới nào ạ.", "smile")
+        }
+        if (notifications.size == 1) {
+            val notif = notifications[0]
+            val detailed = notif.extractDetailedContent()
+            val targetEmotion = notif.extractEmotion() ?: "speaking"
+            val text = "Dạ thưa $pronoun $adminName, em xin phép báo cáo có thông báo mới: $detailed. Em xin hết ạ!"
+            return BriefingResult(text, targetEmotion)
+        }
+        val targetEmotion = notifications.lastOrNull()?.extractEmotion() ?: "speaking"
+        val sb = java.lang.StringBuilder("Dạ thưa $pronoun $adminName, em xin phép báo cáo có ${notifications.size} thông báo mới:")
+        notifications.take(3).forEachIndexed { index, notif ->
             val countWord = when (index) {
                 0 -> "Một là"
                 1 -> "Hai là"
-                2 -> "Ba là"
-                else -> "Bốn là"
+                else -> "Ba là"
             }
-            val text = notif.body.ifBlank { notif.title }
-            sb.append("$countWord: $text. ")
+            sb.append(" $countWord: ${notif.extractDetailedContent()}.")
         }
-        if (n > 4) {
-            sb.append("và ${n - 4} thông báo khác nữa ạ. ")
+        if (notifications.size > 3) {
+            sb.append(" Và còn ${notifications.size - 3} thông báo khác nữa ạ.")
         }
-        sb.append("Em xin hết ạ!")
-        return sb.toString()
+        sb.append(" Em xin hết ạ!")
+        return BriefingResult(sb.toString(), targetEmotion)
     }
 
     private fun fallbackClassifyIntent(transcript: String): MainActivity.ConfirmationIntent {

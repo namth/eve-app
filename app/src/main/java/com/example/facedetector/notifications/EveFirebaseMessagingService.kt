@@ -53,8 +53,14 @@ class EveFirebaseMessagingService : FirebaseMessagingService() {
         if (title.isNullOrBlank() && dataMap.containsKey("title")) {
             title = dataMap["title"]
         }
+        val detailedDataBody = dataMap["content"] ?: dataMap["detail"] ?: dataMap["details"]
+            ?: dataMap["text"] ?: dataMap["message"] ?: dataMap["body"]
+
         if (body.isNullOrBlank()) {
-            body = dataMap["body"] ?: dataMap["text"] ?: dataMap["message"]
+            body = detailedDataBody
+        } else if (!detailedDataBody.isNullOrBlank() && body.contains("thông báo mới từ hệ thống", ignoreCase = true)) {
+            // Nếu body chỉ là câu chung chung mặc định của FCM, ưu tiên lấy nội dung chi tiết từ data
+            body = detailedDataBody
         }
 
         val finalTitle = title ?: "Thông báo từ EVE AI"

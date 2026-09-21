@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import org.json.JSONObject
 
 class EveDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
@@ -424,6 +425,33 @@ class EveDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         return db.update(TABLE_NOTIFICATIONS, values, "$COL_NOTIF_IS_READ = 0", null)
     }
 
+    fun getRecentNotifications(limit: Int = 5): List<NotificationItem> {
+        val list = mutableListOf<NotificationItem>()
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_NOTIFICATIONS,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "$COL_NOTIF_RECEIVED_AT DESC",
+            limit.toString()
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                val id = it.getString(it.getColumnIndexOrThrow(COL_NOTIF_ID))
+                val title = it.getString(it.getColumnIndexOrThrow(COL_NOTIF_TITLE)) ?: ""
+                val body = it.getString(it.getColumnIndexOrThrow(COL_NOTIF_BODY)) ?: ""
+                val data = it.getString(it.getColumnIndexOrThrow(COL_NOTIF_DATA))
+                val isRead = it.getInt(it.getColumnIndexOrThrow(COL_NOTIF_IS_READ)) == 1
+                val receivedAt = it.getLong(it.getColumnIndexOrThrow(COL_NOTIF_RECEIVED_AT))
+                list.add(NotificationItem(id, title, body, data, isRead, receivedAt))
+            }
+        }
+        return list
+    }
+
     fun clearAllNotifications(): Int {
         val db = writableDatabase
         return db.delete(TABLE_NOTIFICATIONS, null, null)
@@ -458,7 +486,7 @@ class EveDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
     }
 
     fun getFcmToken(): String? {
-        return getSetting(KEY_FCM_TOKEN)
+        return getSetting(KEY_FCM_TOKEN, null)
     }
 
     fun setFcmToken(token: String) {
@@ -497,5 +525,61 @@ data class NotificationItem(
     val data: String? = null,
     val isRead: Boolean = false,
     val receivedAt: Long = System.currentTimeMillis()
-)
+) {
+    fun getParsedData(): JSONObject? {
+        if (data.isNullOrBlank()) return null
+        return try {
+            JSONObject(data)
+        } catch (_: Exception) {
+            null
+        }
+    }
 
+    fun extractDetailedContent(): String {
+        val json = getParsedData()
+        if (json != null) {
+            val candidate = listOf("content", "detail", "details", "text", "message", "description", "body")
+                .firstNotNullOfOrNull { key ->
+                    if (json.has(key) && !json.isNull(key)) {
+                        val v = json.optString(key).trim()
+                        if (v.isNotBlank() && !v.equals("null", ignoreCase = true)) v else null
+                    } else null
+                }
+            if (!candidate.isNullOrBlank()) return candidate
+        }
+        return body.ifBlank { title }
+    }
+
+    fun extractInstruction(): String? {
+        val json = getParsedData() ?: return null
+        return listOf("instruction", "instructions", "guide", "prompt", "action_note")
+            .firstNotNullOfOrNull { key ->
+                if (json.has(key) && !json.isNull(key)) {
+                    val v = json.optString(key).trim()
+                    if (v.isNotBlank() && !v.equals("null", ignoreCase = true)) v else null
+                } else null
+            }
+    }
+
+    fun extractEmotion(): String? {
+        val json = getParsedData() ?: return null
+        return listOf("emotion", "mood", "feeling")
+            .firstNotNullOfOrNull { key ->
+                if (json.has(key) && !json.isNull(key)) {
+                    val v = json.optString(key).trim()
+                    if (v.isNotBlank() && !v.equals("null", ignoreCase = true)) v else null
+                } else null
+            }
+    }
+
+    fun extractAction(): String? {
+        val json = getParsedData() ?: return null
+        return listOf("action", "command")
+            .firstNotNullOfOrNull { key ->
+                if (json.has(key) && !json.isNull(key)) {
+                    val v = json.optString(key).trim()
+                    if (v.isNotBlank() && !v.equals("null", ignoreCase = true)) v else null
+                } else null
+            }
+    }
+}

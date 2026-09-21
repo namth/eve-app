@@ -91,6 +91,7 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
     private lateinit var eveWebView: EveWebViewHelper
     private lateinit var voiceManager: VoiceAssistantManager
     private var isWaitingForAiResponse = false
+    private var isBriefingInProgress = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val bannerHideRunnable = Runnable {
@@ -179,6 +180,12 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
         // 9. Fetch and persist FCM Registration Token for n8n
         fetchFcmToken()
 
+        val fromNotif = intent?.getBooleanExtra(EveFirebaseMessagingService.EXTRA_FROM_NOTIFICATION, false) ?: false
+        if (fromNotif) {
+            Log.d(TAG, "MainActivity opened via FCM Notification click in onCreate!")
+            lastGreetedTimestamp = System.currentTimeMillis() // Tránh câu chào tiêu chuẩn đè lên, ưu tiên đọc thông báo
+        }
+
         // 10. Listen to real-time FCM notifications
         EveFirebaseMessagingService.onNotificationReceivedListener = { _ ->
             runOnUiThread {
@@ -186,7 +193,7 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
                 if (isAdmin(active)) {
                     val pending = dbHelper.getPendingNotifications()
                     if (pending.isNotEmpty()) {
-                        if (!voiceManager.isTtsSpeaking && !isWaitingForAiResponse && !voiceManager.hasUserStartedSpeaking) {
+                        if (!voiceManager.isTtsSpeaking && !isWaitingForAiResponse && !isBriefingInProgress && !voiceManager.hasUserStartedSpeaking) {
                             triggerAdminBriefing(active!!, pending)
                         }
                     }
@@ -200,8 +207,8 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
         setIntent(intent)
         val fromNotif = intent?.getBooleanExtra(EveFirebaseMessagingService.EXTRA_FROM_NOTIFICATION, false) ?: false
         if (fromNotif) {
-            Log.d(TAG, "MainActivity opened via FCM Notification click!")
-            lastGreetedTimestamp = 0L // Reset greeting cooldown
+            Log.d(TAG, "MainActivity opened via FCM Notification click in onNewIntent!")
+            lastGreetedTimestamp = System.currentTimeMillis() // Tránh câu chào tiêu chuẩn đè lên, ưu tiên đọc thông báo
             val active = visionTracker.activePerson
             if (isAdmin(active)) {
                 val pending = dbHelper.getPendingNotifications()
@@ -717,11 +724,16 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
 
             // Ưu tiên cao nhất: Nếu là Admin và có thông báo chưa đọc -> đọc ngay lập tức, không bị chặn bởi cooldown
             if (adminUser && pendingNotifs.isNotEmpty()) {
-                if (!voiceManager.isTtsSpeaking && !isWaitingForAiResponse && !voiceManager.hasUserStartedSpeaking) {
+                if (!voiceManager.isTtsSpeaking && !isWaitingForAiResponse && !isBriefingInProgress && !voiceManager.hasUserStartedSpeaking) {
                     lastGreetedPersonId = activePerson.id
                     lastGreetedTimestamp = System.currentTimeMillis()
                     triggerAdminBriefing(activePerson, pendingNotifs)
                 }
+                return@runOnUiThread
+            }
+
+            // Nếu đang trong quá trình chuẩn bị / đọc thông báo hoặc TTS đang phát thì tuyệt đối không chào đè lên
+            if (isBriefingInProgress || voiceManager.isTtsSpeaking || isWaitingForAiResponse) {
                 return@runOnUiThread
             }
 
@@ -743,50 +755,34 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
         }
     }
 
-    private fun triggerAdminBriefing(person: PersonProfile, pendingNotifs: List<NotificationItem>) {
+    private fun triggerAdminBriefing(person: PersonProfile, notifsToBrief: List<NotificationItem>) {
+        if (isBriefingInProgress || notifsToBrief.isEmpty()) return
+        isBriefingInProgress = true
+        isWaitingForAiResponse = true
+
         val pronoun = person.preferredPronoun
         val name = person.name
 
         voiceManager.stopListening()
-
-        if (pendingNotifs.size == 1) {
-            val notif = pendingNotifs[0]
-            val content = notif.body.ifBlank { notif.title }
-            speakScripted(
-                type = ScriptedSpeechType.ADMIN_BRIEFING_SINGLE,
-                person = person,
-                params = mapOf(
-                    "content" to content,
-                    "name" to name,
-                    "pronoun" to pronoun
-                )
-            ) {
-                dbHelper.markNotificationsAsRead(listOf(notif.id))
-                try {
-                    val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                    nm.cancelAll()
-                } catch (_: Exception) {}
-            }
-            return
-        }
-
-        // Multiple notifications: Use LocalAiAgentService (gpt-4o-mini via OpenRouter) to semantically group and summarize
-        isWaitingForAiResponse = true
-        binding.tvVoiceStatus.text = "EVE đang tổng hợp thông báo cho $pronoun $name..."
+        binding.tvVoiceStatus.text = "EVE đang chuẩn bị báo cáo thông báo cho $pronoun $name..."
         eveWebView.setEmotion("thinking")
 
+        lastGreetedPersonId = person.id
+        lastGreetedTimestamp = System.currentTimeMillis()
+
         lifecycleScope.launch {
-            val summarySpeech = LocalAiAgentService.summarizeNotifications(
+            val briefingResult = LocalAiAgentService.summarizeNotifications(
                 adminName = name,
                 pronoun = pronoun,
-                notifications = pendingNotifs,
+                notifications = notifsToBrief,
                 dbHelper = dbHelper
             )
 
             runOnUiThread {
                 isWaitingForAiResponse = false
-                speakAndShowBanner(summarySpeech, "speaking") {
-                    dbHelper.markNotificationsAsRead(pendingNotifs.map { it.id })
+                speakAndShowBanner(briefingResult.replyText, briefingResult.emotion) {
+                    isBriefingInProgress = false
+                    dbHelper.markNotificationsAsRead(notifsToBrief.map { it.id })
                     try {
                         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
                         nm.cancelAll()
@@ -1563,11 +1559,19 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
                         triggerAdminBriefing(targetPerson, pending)
                     }
                 } else {
-                    val pPronoun = targetPerson.preferredPronoun
-                    val pName = targetPerson.name
-                    runOnUiThread {
-                        isWaitingForAiResponse = false
-                        speakAndShowBanner("Dạ thưa $pPronoun $pName, hiện tại không có thông báo nào mới ạ!", "smile")
+                    val recent = dbHelper.getRecentNotifications(limit = 3)
+                    if (recent.isNotEmpty()) {
+                        runOnUiThread {
+                            isWaitingForAiResponse = false
+                            triggerAdminBriefing(targetPerson, recent)
+                        }
+                    } else {
+                        val pPronoun = targetPerson.preferredPronoun
+                        val pName = targetPerson.name
+                        runOnUiThread {
+                            isWaitingForAiResponse = false
+                            speakAndShowBanner("Dạ thưa $pPronoun $pName, hiện tại không có thông báo nào trong hệ thống ạ!", "smile")
+                        }
                     }
                 }
                 return
@@ -1963,12 +1967,12 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
 
             // Sau khi dứt lời thoại, nếu đang nhận diện Admin và có thông báo chưa đọc, tự động đọc tiếp
             val currentActive = visionTracker.activePerson
-            if (isAdmin(currentActive) && !isWaitingForAiResponse && !voiceManager.hasUserStartedSpeaking) {
+            if (isAdmin(currentActive) && !isWaitingForAiResponse && !isBriefingInProgress && !voiceManager.hasUserStartedSpeaking) {
                 val pending = dbHelper.getPendingNotifications()
                 if (pending.isNotEmpty()) {
                     mainHandler.postDelayed({
                         val recheckActive = visionTracker.activePerson
-                        if (isAdmin(recheckActive) && !voiceManager.isTtsSpeaking && !isWaitingForAiResponse && !voiceManager.hasUserStartedSpeaking) {
+                        if (isAdmin(recheckActive) && !voiceManager.isTtsSpeaking && !isWaitingForAiResponse && !isBriefingInProgress && !voiceManager.hasUserStartedSpeaking) {
                             val recheckPending = dbHelper.getPendingNotifications()
                             if (recheckPending.isNotEmpty()) {
                                 triggerAdminBriefing(recheckActive!!, recheckPending)
