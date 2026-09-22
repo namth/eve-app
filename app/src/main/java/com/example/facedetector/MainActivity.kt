@@ -28,6 +28,7 @@ import com.example.facedetector.ai.ScriptedSpeechType
 import com.example.facedetector.ai.VisualPredictionContext
 import com.example.facedetector.data.NotificationItem
 import com.example.facedetector.notifications.EveFirebaseMessagingService
+import org.json.JSONObject
 import com.google.firebase.messaging.FirebaseMessaging
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -180,7 +181,7 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
         // 9. Fetch and persist FCM Registration Token for n8n
         fetchFcmToken()
 
-        val fromNotif = intent?.getBooleanExtra(EveFirebaseMessagingService.EXTRA_FROM_NOTIFICATION, false) ?: false
+        val fromNotif = processNotificationIntent(intent)
         if (fromNotif) {
             Log.d(TAG, "MainActivity opened via FCM Notification click in onCreate!")
             lastGreetedTimestamp = System.currentTimeMillis() // Tránh câu chào tiêu chuẩn đè lên, ưu tiên đọc thông báo
@@ -205,7 +206,7 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val fromNotif = intent?.getBooleanExtra(EveFirebaseMessagingService.EXTRA_FROM_NOTIFICATION, false) ?: false
+        val fromNotif = processNotificationIntent(intent)
         if (fromNotif) {
             Log.d(TAG, "MainActivity opened via FCM Notification click in onNewIntent!")
             lastGreetedTimestamp = System.currentTimeMillis() // Tránh câu chào tiêu chuẩn đè lên, ưu tiên đọc thông báo
@@ -217,6 +218,77 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
                 }
             }
         }
+    }
+
+    private fun processNotificationIntent(intent: Intent?): Boolean {
+        if (intent == null) return false
+        val extras = intent.extras ?: return false
+
+        // Check if intent is from our custom notification or directly from Google Play Services FCM
+        val isOurNotif = extras.getBoolean(EveFirebaseMessagingService.EXTRA_FROM_NOTIFICATION, false)
+        val isGoogleFcm = extras.containsKey("google.message_id") ||
+                extras.containsKey("gcm.notification.title") ||
+                extras.containsKey("gcm.notification.body") ||
+                extras.containsKey("google.sent_time") ||
+                extras.containsKey("from")
+
+        if (!isOurNotif && !isGoogleFcm) {
+            return false
+        }
+
+        Log.d(TAG, "processNotificationIntent: Detected notification in Intent! isOurNotif=$isOurNotif, isGoogleFcm=$isGoogleFcm")
+
+        val messageId = extras.getString("google.message_id")
+            ?: extras.getString("message_id")
+            ?: "fcm_intent_${System.currentTimeMillis()}"
+
+        // Title: check gcm.notification.title, then title
+        val title = extras.getString("gcm.notification.title")
+            ?: extras.getString("title")
+            ?: "Thông báo từ EVE AI"
+
+        // Detailed content from data payload
+        val detailedDataBody = extras.getString("content")
+            ?: extras.getString("detail")
+            ?: extras.getString("details")
+            ?: extras.getString("text")
+            ?: extras.getString("message")
+
+        var body = extras.getString("gcm.notification.body") ?: extras.getString("body")
+        if (body.isNullOrBlank()) {
+            body = detailedDataBody ?: "Bạn có một thông báo mới từ hệ thống."
+        } else if (!detailedDataBody.isNullOrBlank() && body.contains("thông báo mới từ hệ thống", ignoreCase = true)) {
+            // Nếu body chỉ là câu thông báo mặc định của FCM, ưu tiên lấy nội dung chi tiết từ data
+            body = detailedDataBody
+        }
+
+        // Collect all custom data keys (excluding system/internal FCM keys)
+        val dataMap = mutableMapOf<String, Any>()
+        for (key in extras.keySet()) {
+            if (key.startsWith("google.") || key.startsWith("gcm.") || key == "from" ||
+                key == "collapse_key" || key == EveFirebaseMessagingService.EXTRA_FROM_NOTIFICATION
+            ) {
+                continue
+            }
+            extras.get(key)?.let { value ->
+                dataMap[key] = value.toString()
+            }
+        }
+        val dataJson = if (dataMap.isNotEmpty()) JSONObject(dataMap as Map<*, *>).toString() else null
+
+        try {
+            dbHelper.insertNotification(
+                id = messageId,
+                title = title,
+                body = body,
+                dataJson = dataJson
+            )
+            Log.d(TAG, "processNotificationIntent: Ingested FCM notification into DB successfully: ID=$messageId, title=$title")
+        } catch (e: Exception) {
+            Log.e(TAG, "processNotificationIntent: Error saving notification to DB: ${e.message}", e)
+        }
+
+        return true
     }
 
     private fun fetchFcmToken() {
@@ -780,6 +852,9 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
 
             runOnUiThread {
                 isWaitingForAiResponse = false
+                briefingResult.action?.let { act ->
+                    eveWebView.triggerAction(act)
+                }
                 speakAndShowBanner(briefingResult.replyText, briefingResult.emotion) {
                     isBriefingInProgress = false
                     dbHelper.markNotificationsAsRead(notifsToBrief.map { it.id })
