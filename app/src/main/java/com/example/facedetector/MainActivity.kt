@@ -1480,6 +1480,10 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
                     if (existing != null) {
                         savedPerson = existing
                     } else {
+                        val fallbackEmbedding = visionTracker.pendingStrangerEmbedding
+                        val fallbackAvatar = visionTracker.pendingStrangerCroppedFace?.let {
+                            ImageUtils.bitmapToBase64(it)
+                        }
                         val newProfile = PersonProfile(
                             id = "person_${System.currentTimeMillis()}",
                             name = newP.name,
@@ -1487,8 +1491,8 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
                             gender = newP.gender,
                             preferredPronoun = newP.preferredPronoun,
                             role = newP.role,
-                            avatarBase64 = null,
-                            faceEmbeddings = emptyList(),
+                            avatarBase64 = fallbackAvatar,
+                            faceEmbeddings = if (fallbackEmbedding != null) listOf(fallbackEmbedding) else emptyList(),
                             createdAt = System.currentTimeMillis(),
                             lastSeenAt = System.currentTimeMillis()
                         )
@@ -1499,7 +1503,7 @@ class MainActivity : AppCompatActivity(), EveVisionTracker.Listener, VoiceAssist
                 }
 
                 if (savedPerson != null) {
-                    val hasFace = captureResult.success && savedPerson.faceEmbeddings.isNotEmpty()
+                    val hasFace = savedPerson.faceEmbeddings.isNotEmpty()
                     visionTracker.setActivePersonManually(savedPerson, hasFaceConfirmed = hasFace)
                     sessionPredictedGender = savedPerson.gender
                     runOnUiThread {

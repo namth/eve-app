@@ -102,4 +102,66 @@ class N8nResponseTest {
         assertNotNull(tuanKiet)
         assertEquals("Đỗ Tuấn Kiệt", tuanKiet!!.name)
     }
+
+    @Test
+    fun testShortDirectNameResponses() {
+        // Trả lời ngắn gọn trực tiếp chỉ có tên
+        val tuan = N8nService.extractNameFromMessage("Tuấn")
+        assertNotNull(tuan)
+        assertEquals("Tuấn", tuan!!.name)
+
+        val nam = N8nService.extractNameFromMessage("Nam")
+        assertNotNull(nam)
+        assertEquals("Nam", nam!!.name)
+        assertEquals("admin", nam.role)
+
+        // Trả lời Đại từ + Tên
+        val anhTuan = N8nService.extractNameFromMessage("Anh Tuấn")
+        assertNotNull(anhTuan)
+        assertEquals("Tuấn", anhTuan!!.name)
+        assertEquals("Anh", anhTuan.preferredPronoun)
+        assertEquals("male", anhTuan.gender)
+
+        val chiMai = N8nService.extractNameFromMessage("Chị Mai")
+        assertNotNull(chiMai)
+        assertEquals("Mai", chiMai!!.name)
+        assertEquals("Chị", chiMai.preferredPronoun)
+        assertEquals("female", chiMai.gender)
+
+        val chuBa = N8nService.extractNameFromMessage("Chú Ba")
+        assertNotNull(chuBa)
+        assertEquals("Ba", chuBa!!.name)
+        assertEquals("Chú", chuBa.preferredPronoun)
+
+        val bacHung = N8nService.extractNameFromMessage("Bác Hùng nhé")
+        assertNotNull(bacHung)
+        assertEquals("Hùng", bacHung!!.name)
+        assertEquals("Bác", bacHung.preferredPronoun)
+
+        // Các dạng câu "Anh tên Nam", "Anh tên là Nam", "Tên anh là Nam"
+        val anhTenNam = N8nService.extractNameFromMessage("Anh tên Nam")
+        assertNotNull(anhTenNam)
+        assertEquals("Nam", anhTenNam!!.name)
+        assertEquals("Anh", anhTenNam.preferredPronoun)
+
+        val anhTenLaHung = N8nService.extractNameFromMessage("anh tên là Hùng")
+        assertNotNull(anhTenLaHung)
+        assertEquals("Hùng", anhTenLaHung!!.name)
+        assertEquals("Anh", anhTenLaHung.preferredPronoun)
+
+        val tenLaTuan = N8nService.extractNameFromMessage("Tên là Tuấn")
+        assertNotNull(tenLaTuan)
+        assertEquals("Tuấn", tenLaTuan!!.name)
+
+        val laNam = N8nService.extractNameFromMessage("Là Nam đây")
+        assertNotNull(laNam)
+        assertEquals("Nam", laNam!!.name)
+
+        // Câu không chứa tên
+        val nonName = N8nService.extractNameFromMessage("không có gì đâu")
+        org.junit.Assert.assertNull(nonName)
+
+        val weather = N8nService.extractNameFromMessage("thời tiết hôm nay thế nào")
+        org.junit.Assert.assertNull(weather)
+    }
 }

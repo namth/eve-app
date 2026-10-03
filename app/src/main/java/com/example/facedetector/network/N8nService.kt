@@ -328,14 +328,35 @@ object N8nService {
         "nhá", "nhen", "nhỉ", "nhở", "với", "cho", "luôn", "nào", "gì", "ai", "không", "chưa"
     )
 
+    val NON_NAME_WORDS = setOf(
+        "không", "chưa", "gì", "ai", "sao", "được", "có", "rồi", "đúng", "sai", "biết",
+        "hỏi", "nghe", "nói", "xem", "làm", "đi", "đến", "vào", "ra", "ở", "tại", "cho",
+        "với", "về", "như", "thế", "nào", "mấy", "bao", "nhiêu", "thời", "tiết", "tin",
+        "tức", "hôm", "nay", "ngày", "giờ", "phút", "giây", "bật", "tắt", "mở",
+        "đóng", "hát", "múa", "chơi", "ngủ", "nghỉ", "chào", "bye", "alo", "ok", "okay",
+        "rất", "vui", "lắm", "quá", "giúp", "muốn", "thích", "cảm", "ơn", "tại", "sao"
+    )
+
+    private val QUESTION_WORDS = setOf("gì", "ai", "sao", "nào", "đâu", "chưa", "không", "mấy", "bao nhiêu")
+
+    private val PREFIX_STRIP_REGEX = Regex(
+        """^(?:chào em|chào eve|chào robot|chào bạn|chào|eve ơi|robot ơi|em ơi|dạ em ơi|dạ chào em|dạ|à|ừ|thì|ê|hê lô|hello|hi)\s*[,.]?\s*""",
+        RegexOption.IGNORE_CASE
+    )
+
     /**
      * Extracts name and pronoun from Vietnamese introduction sentences.
      * Supports compound names ("Hoàng Anh", "Hoài An"), full names ("Nguyễn Hoàng Nam"),
+     * short direct name replies ("Tuấn", "Anh Tuấn", "Chị Mai", "Chú Ba", "Hùng nhé"),
      * diverse pronouns ("chú", "bác", "cô", "dì", "cậu", "mợ", "anh", "chị", "cháu", "mày/tao"),
      * and special monikers like "chú tiểu".
      */
     fun extractNameFromMessage(message: String): IncomingPerson? {
-        val lower = message.lowercase().trim()
+        val lowerRaw = message.lowercase().trim()
+        val cleaned = PREFIX_STRIP_REGEX.replace(message.trim(), "").trim()
+        val lower = cleaned.lowercase().trim()
+
+        if (lower.isBlank()) return null
 
         // 1. Xác định đại từ xưng hô và giới tính tiếng Việt phong phú
         var pronoun = "Bạn"
@@ -361,13 +382,55 @@ object N8nService {
 
         // 2. Mẫu câu xưng tên đa dạng, hỗ trợ tên kép (Hoàng Anh, Hoài An) & họ tên đầy đủ với mọi dấu tiếng Việt
         val introRegex = Regex(
-            """(?:tôi là|mình là|anh là|chị là|em là|chú là|bác là|cô là|dì là|cậu là|mợ là|cháu là|tao là|tên(?: tôi| mình| anh| chị| em| chú| bác| cô)?(?: là)?|gọi (?:tôi|mình|anh|chị|em|chú|bác|cô|tao) là|cứ gọi (?:tôi|mình|anh|chị|em|chú|bác|cô|tao) là)\s+([\p{L}\s]+)""",
+            """(?:tôi là|mình là|anh là|chị là|em là|chú là|bác là|cô là|dì là|cậu là|mợ là|cháu là|tao là|là|anh tên|chị tên|em tên|chú tên|bác tên|cô tên|tôi tên|mình tên|tên(?: tôi| mình| anh| chị| em| chú| bác| cô)?)(?:\s+là)?\s+([\p{L}\s]+)|(?:gọi|cứ gọi)\s+(?:tôi|mình|anh|chị|em|chú|bác|cô|tao)\s+là\s+([\p{L}\s]+)|(?:đã bảo là|bảo là)\s+([\p{L}\s]+)""",
             RegexOption.IGNORE_CASE
         )
 
-        val match = introRegex.find(message)
-        if (match != null && match.groupValues.size > 1) {
-            val rawCaptured = match.groupValues[1].trim()
+        val match = introRegex.find(cleaned)
+        var rawCaptured: String? = null
+        if (match != null) {
+            rawCaptured = match.groupValues.drop(1).firstOrNull { it.isNotBlank() }?.trim()
+        }
+
+        // 3. Fallback: Nếu không khớp regex mẫu câu giới thiệu dài, kiểm tra câu trả lời trực tiếp ngắn gọn (1 - 4 từ)
+        // Ví dụ khi EVE vừa hỏi: "Anh tên là gì ạ?" -> người dùng trả lời: "Tuấn", "Anh Tuấn", "Chị Mai", "Hùng nè", "Nam đây"
+        if (rawCaptured == null) {
+            val words = cleaned.split("\\s+".toRegex()).filter { it.isNotBlank() }.toMutableList()
+            // Loại bỏ từ đệm cuối câu
+            while (words.isNotEmpty() && STOP_WORDS.contains(words.last().lowercase())) {
+                words.removeAt(words.size - 1)
+            }
+
+            if (words.size in 1..4) {
+                val wordsLower = words.map { it.lowercase() }
+
+                if (words.size == 1) {
+                    val singleWord = words[0]
+                    if (PRONOUN_BLACKLIST.contains(singleWord.lowercase())) {
+                        // Người dùng chỉ nói 1 đại từ duy nhất (ví dụ: "chú", "anh")
+                        val detectedP = singleWord.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                        return IncomingPerson(name = "", gender = gender, preferredPronoun = detectedP, role = "friend")
+                    } else if (singleWord.length >= 2 && !NON_NAME_WORDS.contains(singleWord.lowercase())) {
+                        rawCaptured = singleWord
+                    }
+                } else {
+                    // >= 2 từ:
+                    val firstIsPronoun = PRONOUN_BLACKLIST.contains(wordsLower[0])
+                    val remainingWords = wordsLower.drop(1)
+                    val containsQuestion = remainingWords.any { QUESTION_WORDS.contains(it) }
+
+                    if (firstIsPronoun && !containsQuestion) {
+                        // Ví dụ: "Anh Tuấn", "Chị Mai", "Chú Ba", "Bác Hùng"
+                        rawCaptured = words.joinToString(" ")
+                    } else if (!wordsLower.any { NON_NAME_WORDS.contains(it) }) {
+                        // Tên đầy đủ không có từ phi danh từ, ví dụ "Hoàng Nam", "Nguyễn Văn Tuấn"
+                        rawCaptured = words.joinToString(" ")
+                    }
+                }
+            }
+        }
+
+        if (rawCaptured != null) {
             val rawWords = rawCaptured.split("\\s+".toRegex()).filter { it.isNotBlank() }.toMutableList()
 
             // Loại bỏ các từ đệm ở cuối câu: "đây", "nè", "nhé", "ạ", "ơi"...
@@ -396,7 +459,7 @@ object N8nService {
                 )
             }
 
-            // Nếu từ đầu tiên là đại từ và có từ phía sau (ví dụ: "mình là anh Nam" -> từ đầu là "anh")
+            // Nếu từ đầu tiên là đại từ và có từ phía sau (ví dụ: "mình là anh Nam" hoặc "Anh Tuấn")
             if (rawWords.size > 1 && PRONOUN_BLACKLIST.contains(rawWords.first().lowercase())) {
                 val leadingPronounWord = rawWords.first().lowercase()
                 when (leadingPronounWord) {

@@ -575,8 +575,8 @@ $visualNote
 # NHIỆM VỤ:
 1. Chào đón thân thiện, lịch sự, xưng "em" gọi "$guess".
 2. Khuyến khích người đối diện giới thiệu tên, tuổi hoặc danh xưng mong muốn.
-3. Nếu người dùng giới thiệu tên hoặc đại từ xưng hô (ví dụ: "Chào em anh tên là Hùng", "Gọi tôi là chú Nam nhé", "Chị tên là Mai"):
-   Trích xuất object new_person:
+3. QUAN TRỌNG NHẤT: Bất cứ khi nào người dùng cung cấp tên (dù chỉ nói 1-2 từ ngắn gọn như "Tuấn", "Anh Tuấn", "Nam", "Chị Mai", "Hùng nhé", "Nam đây" hoặc nói cả câu như "Anh tên là Hùng", "Tôi là Nam"):
+   BẮT BUỘC TRÍCH XUẤT object new_person:
    {
      "name": "<Tên riêng viết hoa chữ đầu>",
      "preferred_pronoun": "<Anh/Chị/Chú/Bác/Cô/Bạn>",
@@ -584,7 +584,8 @@ $visualNote
      "gender": "<male/female/unknown>",
      "role": "friend"
    }
-   Đồng thời phát câu chào xác nhận nồng nhiệt: "Dạ em chào [danh xưng] [tên] ạ! Rất vui được đón tiếp [danh xưng] đến với INOVA!".
+   TUYỆT ĐỐI KHÔNG ĐƯỢC HỎI LẠI TÊN NỮA khi người dùng đã cung cấp tên!
+   Đồng thời phát câu chào xác nhận nồng nhiệt: "Dạ em chào [danh xưng] [tên] ạ! Rất vui được đón tiếp [danh xưng] đến với INOVA, em đã ghi nhớ tên và khuôn mặt của [danh xưng] rồi ạ!".
 4. Nếu người dùng hỏi tin tức thời sự/nóng:
    "action": "perplexity", "query": "<câu truy vấn>", "reply_text": "Dạ để em tìm tin tức mới nhất phục vụ $guess ngay ạ!"
 
@@ -598,8 +599,44 @@ $visualNote
   "new_person": null
 }
 
-# VÍ DỤ MẪU (BẮT BUỘC TRÍCH XUẤT new_person KHI NGƯỜI DÙNG GIỚI THIỆU TÊN):
-1. Khách nam xưng tên:
+# VÍ DỤ MẪU (BẮT BUỘC TRÍCH XUẤT new_person KHI NGƯỜI DÙNG CUNG CẤP TÊN):
+1. Khách nam nói ngắn gọn chỉ có tên:
+User: "Tuấn"
+➔
+{
+  "status": "ok",
+  "reply_text": "Dạ em chào anh Tuấn ạ! Rất vui được đón tiếp anh đến với INOVA, em đã ghi nhớ tên và khuôn mặt của anh rồi ạ!",
+  "emotion": "smile",
+  "action": "none",
+  "query": null,
+  "new_person": {
+    "name": "Tuấn",
+    "preferred_pronoun": "Anh",
+    "age": null,
+    "gender": "male",
+    "role": "friend"
+  }
+}
+
+2. Khách nam nói Đại từ + Tên:
+User: "Anh Tuấn"
+➔
+{
+  "status": "ok",
+  "reply_text": "Dạ em chào anh Tuấn ạ! Rất vui được đón tiếp anh đến với INOVA, em đã ghi nhớ tên và khuôn mặt của anh rồi ạ!",
+  "emotion": "smile",
+  "action": "none",
+  "query": null,
+  "new_person": {
+    "name": "Tuấn",
+    "preferred_pronoun": "Anh",
+    "age": null,
+    "gender": "male",
+    "role": "friend"
+  }
+}
+
+3. Khách xưng tên trong câu:
 User: "Chào em, anh là Tuấn"
 ➔
 {
@@ -617,7 +654,7 @@ User: "Chào em, anh là Tuấn"
   }
 }
 
-2. Khách nữ xưng tên:
+4. Khách nữ xưng tên:
 User: "Chị tên là Mai"
 ➔
 {
@@ -635,7 +672,7 @@ User: "Chị tên là Mai"
   }
 }
 
-3. Khách xưng chú/bác:
+5. Khách xưng chú/bác:
 User: "Cứ gọi tôi là chú Ba nhé"
 ➔
 {
@@ -653,7 +690,7 @@ User: "Cứ gọi tôi là chú Ba nhé"
   }
 }
 
-4. Khách chỉ chào hỏi thông thường chưa nói tên:
+6. Khách chỉ chào hỏi thông thường chưa nói tên:
 User: "Chào em"
 ➔
 {
@@ -663,6 +700,7 @@ User: "Chào em"
   "action": "none",
   "query": null,
   "new_person": null
+}
 }
         """.trimIndent()
     }
@@ -990,9 +1028,21 @@ User: "Chào em"
             }
 
             var finalReplyText = replyText
-            // Nếu phát hiện ra người mới và có tên nhưng câu trả lời của LLM chưa chào tên:
-            if (newPerson != null && newPerson.name.isNotBlank() && !finalReplyText.contains(newPerson.name, ignoreCase = true)) {
-                finalReplyText = "Dạ em chào ${newPerson.preferredPronoun} ${newPerson.name} ạ! Rất vui được đón tiếp ${newPerson.preferredPronoun} đến với INOVA, em đã ghi nhớ tên và khuôn mặt của ${newPerson.preferredPronoun} rồi ạ!"
+            // Nếu phát hiện ra người mới và có tên: Tuyệt đối không để câu thoại hỏi lại tên
+            if (newPerson != null && newPerson.name.isNotBlank()) {
+                val p = newPerson.preferredPronoun
+                val n = newPerson.name
+                val isAskingNameAgain = finalReplyText.contains("tên là gì", ignoreCase = true) ||
+                        finalReplyText.contains("tên gì", ignoreCase = true) ||
+                        finalReplyText.contains("biết tên", ignoreCase = true) ||
+                        finalReplyText.contains("xin tên", ignoreCase = true) ||
+                        finalReplyText.contains("quý danh", ignoreCase = true) ||
+                        finalReplyText.contains("xưng hô thế nào", ignoreCase = true) ||
+                        !finalReplyText.contains(n, ignoreCase = true)
+
+                if (isAskingNameAgain) {
+                    finalReplyText = "Dạ em chào $p $n ạ! Rất vui được đón tiếp $p đến với INOVA, em đã ghi nhớ tên và khuôn mặt của $p rồi ạ!"
+                }
             }
 
             // Kiểm tra pronunciation

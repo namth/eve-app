@@ -118,6 +118,14 @@ class EveVisionTracker(
     var latestEulerZ: Float = 0f
         private set
 
+    @Volatile
+    var pendingStrangerCroppedFace: Bitmap? = null
+        private set
+
+    @Volatile
+    var pendingStrangerEmbedding: FloatArray? = null
+        private set
+
     private var cachedPeople: List<PersonProfile> = emptyList()
 
     init {
@@ -352,6 +360,9 @@ class EveVisionTracker(
                                 hasGreetedUnknownCurrentSession = true
                                 lastUnknownGreetedTimestamp = now
 
+                                pendingStrangerCroppedFace = croppedFace
+                                pendingStrangerEmbedding = embedding
+
                                 val genderResult = genderClassifier.predictGender(croppedFace)
                                 listener.onUnknownPersonGreetable(primaryFace.boundingBox, genderResult.gender, croppedFace)
                             }
@@ -483,31 +494,59 @@ class EveVisionTracker(
         val fullBmp = latestFullBitmap
         val faceRect = latestFaceRect
 
-        if (fullBmp == null || faceRect == null) {
+        var cropped: Bitmap? = null
+        var embedding: FloatArray? = null
+
+        if (fullBmp != null && faceRect != null) {
+            val candidateCrop = ImageUtils.cropFace(fullBmp, faceRect, latestEulerZ)
+            if (candidateCrop != null) {
+                cropped = candidateCrop
+                embedding = faceNetModel.getFaceEmbedding(candidateCrop)
+            }
+        }
+
+        // Nếu tại khoảnh khắc này không crop được từ camera (người dùng quay mặt đi, camera trễ nhịp),
+        // SỬ DỤNG NGAY khuôn mặt và vector người lạ đã được lưu khi vừa phát hiện (pendingStranger)
+        if (embedding == null) {
+            embedding = pendingStrangerEmbedding
+            cropped = pendingStrangerCroppedFace
+        }
+
+        if (embedding == null || cropped == null) {
+            Log.w(TAG, "captureCurrentFaceForPerson: Failed to capture face and no pending stranger face available")
             return AutoCaptureResult(
                 success = false,
                 reason = "NO_FACE_IN_VIEW"
             )
         }
 
-        val cropped = ImageUtils.cropFace(fullBmp, faceRect, latestEulerZ)
-            ?: return AutoCaptureResult(success = false, reason = "CROP_FAILED")
-
-        // 1. Extract 192D vector
-        val embedding = faceNetModel.getFaceEmbedding(cropped)
+        // 1. Thu thập vector nhận diện (nếu có cả vector lúc vừa thấy mặt và vector lúc nói tên thì lưu cả hai để đa góc mặt)
+        val initialEmbeddings = mutableListOf<FloatArray>()
+        initialEmbeddings.add(embedding)
+        val backupEmb = pendingStrangerEmbedding
+        if (backupEmb != null && backupEmb !== embedding) {
+            val sim = VectorMath.cosineSimilarity(embedding, backupEmb)
+            if (sim in 0.55f..0.96f) {
+                initialEmbeddings.add(backupEmb)
+                Log.d(TAG, "Multi-angle enrollment: Combined initial stranger vector with current speech vector (sim=$sim)")
+            }
+        }
 
         // 2. Compress cropped face into Base64 avatar
-        val avatarBase64 = bitmapToBase64(cropped)
+        val avatarBase64 = ImageUtils.bitmapToBase64(cropped)
 
         // 3. Check if person already exists in SQLite
         val existing = dbHelper.findPersonByName(name)
         val finalPerson = if (existing != null) {
             val updatedEmbeddings = existing.faceEmbeddings.toMutableList()
-            val maxSim = updatedEmbeddings.maxOfOrNull { VectorMath.cosineSimilarity(embedding, it) } ?: 0f
-            if (maxSim < 0.95f && updatedEmbeddings.size < 9) {
-                updatedEmbeddings.add(embedding)
-            } else if (updatedEmbeddings.isEmpty()) {
-                updatedEmbeddings.add(embedding)
+            for (emb in initialEmbeddings) {
+                val maxSim = updatedEmbeddings.maxOfOrNull { VectorMath.cosineSimilarity(emb, it) } ?: 0f
+                if (maxSim < 0.95f && updatedEmbeddings.size < 9) {
+                    updatedEmbeddings.add(emb)
+                }
+            }
+            if (updatedEmbeddings.isEmpty()) {
+                updatedEmbeddings.addAll(initialEmbeddings)
             }
             val updated = existing.copy(
                 faceEmbeddings = updatedEmbeddings,
@@ -524,7 +563,7 @@ class EveVisionTracker(
                 preferredPronoun = preferredPronoun,
                 role = role,
                 avatarBase64 = avatarBase64,
-                faceEmbeddings = listOf(embedding),
+                faceEmbeddings = initialEmbeddings,
                 createdAt = System.currentTimeMillis(),
                 lastSeenAt = System.currentTimeMillis()
             )
@@ -538,6 +577,11 @@ class EveVisionTracker(
         lastSeenTimestamp = System.currentTimeMillis()
         hasVisualFaceConfirmed = true
         hasGreetedUnknownCurrentSession = true
+        lastTrackedBox = faceRect ?: latestFaceRect
+        trackingMismatchCount = 0
+
+        pendingStrangerCroppedFace = null
+        pendingStrangerEmbedding = null
 
         return AutoCaptureResult(success = true, person = finalPerson)
     }
@@ -606,6 +650,10 @@ class EveVisionTracker(
         lastSeenTimestamp = System.currentTimeMillis()
         hasVisualFaceConfirmed = hasFaceConfirmed
         hasGreetedUnknownCurrentSession = true
+        lastTrackedBox = latestFaceRect
+        trackingMismatchCount = 0
+        pendingStrangerCroppedFace = null
+        pendingStrangerEmbedding = null
     }
 
     fun reset() {
@@ -620,5 +668,7 @@ class EveVisionTracker(
         pendingAmbiguousMatch = null
         consecutiveAmbiguousFrames = 0
         latestVisualPrediction = null
+        pendingStrangerCroppedFace = null
+        pendingStrangerEmbedding = null
     }
 }
